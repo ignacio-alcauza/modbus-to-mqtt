@@ -143,6 +143,13 @@ def main():
                         logger.error(f"Error querying {dev['name']}: {e}")
                         
                     dev["last_run"] = time.time()
+            
+            # Update heartbeat file for Docker healthcheck
+            try:
+                with open("/tmp/heartbeat", "w") as f:
+                    f.write(str(int(time.time())))
+            except Exception as e:
+                logger.error(f"Failed to update heartbeat file: {e}")
                     
             time.sleep(1)
             
