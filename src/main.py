@@ -124,6 +124,7 @@ def main():
                     logger.debug(f"Querying {dev['name']}...")
                     client = dev["client"]
                     
+                    try:
                         with client:
                             data = client.get_all_data()
                             if data:
