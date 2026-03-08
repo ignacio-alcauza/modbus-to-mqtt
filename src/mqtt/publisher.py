@@ -63,9 +63,10 @@ class MQTTPublisher:
             # Topic format: <discovery_prefix>/sensor/<node_id>/<object_id>/config
             discovery_topic = f"{discovery_prefix}/sensor/{device_id}/{sensor['id']}/config"
             
+            safe_device_id = device_id.replace("/", "_")
             payload = {
                 "name": sensor['name'],
-                "unique_id": f"{device_id}_{sensor['id']}",
+                "unique_id": f"{safe_device_id}_{sensor['id']}",
                 "state_topic": state_topic,
                 "value_template": sensor.get('value_template'),
                 "device": device_info

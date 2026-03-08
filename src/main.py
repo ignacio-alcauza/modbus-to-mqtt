@@ -133,9 +133,9 @@ def main():
     for dev in devices:
         sensors = dev["client"].get_discovery_sensors()
         if sensors:
-            # Create a unique device ID (e.g. geekcomit12_jkbms)
+            # Create a unique device ID (e.g. geekcomit12/jkbms)
             node_name = base_topic.split("/")[-1] if "/" in base_topic else base_topic
-            device_id = f"{node_name}_{dev['name']}"
+            device_id = f"{node_name}/{dev['name']}"
             
             logger.info(f"Publishing HA Discovery for {dev['name']} ({len(sensors)} sensors)")
             try:
