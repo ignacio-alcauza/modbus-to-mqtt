@@ -41,6 +41,21 @@ def write_debug_file(device_name: str, data: dict):
         logger.error(f"Failed to write debug file for {device_name}: {e}")
 
 def main():
+    # Handle Docker healthcheck
+    if "--healthcheck" in sys.argv:
+        hb_file = "/tmp/heartbeat"
+        if os.path.exists(hb_file):
+            if time.time() - os.path.getmtime(hb_file) < 150:
+                sys.exit(0)
+        sys.exit(1)
+
+    # Initial heartbeat for Docker healthcheck
+    try:
+        with open("/tmp/heartbeat", "w") as f:
+            f.write(str(int(time.time())))
+    except Exception as e:
+        logger.error(f"Failed to create initial heartbeat file: {e}")
+
     config = load_config()
     
     # Init MQTT
@@ -113,17 +128,21 @@ def main():
         logger.warning("No active devices found in config.yml. Exiting.")
         sys.exit(0)
 
-    # Initial heartbeat for Docker healthcheck
-    try:
-        with open("/tmp/heartbeat", "w") as f:
-            f.write(str(int(time.time())))
-    except Exception as e:
-        logger.error(f"Failed to create initial heartbeat file: {e}")
-
     logger.info("Starting main loop...")
     
     try:
         while True:
+            # Update heartbeat file for Docker healthcheck
+            try:
+                # touching file is enough to update mtime
+                os.utime("/tmp/heartbeat", None)
+            except Exception:
+                try:
+                    with open("/tmp/heartbeat", "w") as f:
+                        f.write(str(int(time.time())))
+                except:
+                    pass
+
             current_time = time.time()
             
             for dev in devices:
@@ -150,13 +169,6 @@ def main():
                         logger.error(f"Error querying {dev['name']}: {e}")
                         
                     dev["last_run"] = time.time()
-            
-            # Update heartbeat file for Docker healthcheck
-            try:
-                with open("/tmp/heartbeat", "w") as f:
-                    f.write(str(int(time.time())))
-            except Exception as e:
-                logger.error(f"Failed to update heartbeat file: {e}")
                     
             time.sleep(1)
             

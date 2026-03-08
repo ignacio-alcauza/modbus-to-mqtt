@@ -11,8 +11,8 @@ services:
     # For Home Assistant MQTT auto-discovery or local network access
     network_mode: "host" 
     healthcheck:
-      test: ["CMD-SHELL", "test -f /tmp/heartbeat && [ $(($(date +%s) - $(cat /tmp/heartbeat))) -lt 120 ]"]
+      test: ["CMD", "python", "src/main.py", "--healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 30s
