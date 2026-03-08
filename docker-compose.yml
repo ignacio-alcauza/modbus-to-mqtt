@@ -1,0 +1,12 @@
+services:
+  modbus-bridge:
+    build: .
+    container_name: modbus-to-mqtt
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./config.yml:/app/config.yml:ro
+      - ./logs:/app/logs
+    # For Home Assistant MQTT auto-discovery or local network access
+    network_mode: "host" 

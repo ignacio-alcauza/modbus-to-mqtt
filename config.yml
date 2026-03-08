@@ -1,0 +1,24 @@
+broker-mqtt:
+  mqtt_server: ${MQTT_SERVER}
+  mqtt_port: ${MQTT_PORT}
+  mqtt_user: ${MQTT_USER}
+  mqtt_pass: ${MQTT_PASS}
+  homeassistant_mqtt_topic: homeassistant/sensor/geekcomit12
+
+jkbms:
+  active: true
+  mqtt_subtopic: jkbms
+  modbus_ip: 192.168.1.136
+  modbus_port: 502
+  modbus_unit: 1
+  query_seconds: 30
+  debug_values: false
+
+deye_inverter:
+  active: false
+  mqtt_subtopic: deye_inverter
+  modbus_ip: 192.168.1.133
+  modbus_port: 502
+  modbus_unit: 1
+  query_seconds: 30
+  debug_values: false

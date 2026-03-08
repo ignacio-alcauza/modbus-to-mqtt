@@ -1,0 +1,316 @@
+--- PAGE 1 ---
+HEX DEC
+0x0000 0 UINT32 4 R W 进入休眠电压VolSmartSleep mV
+0x0004 4 UINT32 4 R W 单体欠压保护VolCellUV mV
+0x0008 8 UINT32 4 R W 单体欠压保护恢复VolCellUVPR mV
+0x000C 12 UINT32 4 R W 单体过充保护VolCellOV mV
+0x0010 16 UINT32 4 R W 单体过充保护恢复电压VolCellOVPR mV
+0x0014 20 UINT32 4 R W 触发均衡压差VolBalanTrig mV
+0x0018 24 UINT32 4 R W SOC-100%电压VolSOC100% mV
+0x001C 28 UINT32 4 R W SOC-0%电压VolSOC0% mV
+0x0020 32 UINT32 4 R W 推荐充电电压VolCellRCV mV
+0x0024 36 UINT32 4 R W 浮充电压VolCellRFV mV
+0x0028 40 UINT32 4 R W 自动关机电压VolSysPwrOff mV
+0x002C 44 UINT32 4 R W 持续充电电流CurBatCOC mA
+0x0030 48 UINT32 4 R W 充电过流保护延迟TIMBatCOCPDly S
+0x0034 52 UINT32 4 R W 充电过流保护解除TIMBatCOCPRDly S
+0x0038 56 UINT32 4 R W 持续放电电流CurBatDcOC mA
+0x003C 60 UINT32 4 R W 放电过流保护延迟TIMBatDcOCPDly S
+0x0040 64 UINT32 4 R W 放电过流保护解除TIMBatDcOCPRDly S
+0x0044 68 UINT32 4 R W 短路保护解除TIMBatSCPRDly S
+0x0048 72 UINT32 4 R W 最大均衡电流CurBalanMax mA
+0x004C 76 INT32 4 R W 充电过温保护TMPBatCOT 0.1 ℃
+0x0050 80 INT32 4 R W 充电过温恢复TMPBatCOTPR 0.1℃
+0x0054 84 INT32 4 R W 放电过温保护TMPBatDcOT 0.1 ℃
+0x0058 88 INT32 4 R W 放电过温恢复TMPBatDcOTPR 0.1℃
+0x005C 92 INT32 4 R W 充电低温保护TMPBatCUT 0.1 ℃
+0x0060 96 INT32 4 R W 充电低温恢复TMPBatCUTPR 0.1℃
+0x0064 100 INT32 4 R W MOS过温保护TMPMosOT 0.1 ℃
+0x0068 104 INT32 4 R W MOS过温保护恢复TMPMosOTPR 0.1℃
+0x006C 108 UINT32 4 R W 单体数量CellCount 串
+0x0070 112 UINT32 4 R W 充电开关BatChargeEN 1 ：打开 ;  0：关闭
+0x0074 116 UINT32 4 R W 放电开关BatDisChargeEN 1 ：打开 ;  0：关闭
+0x0078 120 UINT32 4 R W 均衡开关BalanEN 1 ：打开 ;  0：关闭
+寄存器映射表Register Map
+偏移Index起始地址码
+Address Field
+数据类型
+Type
+长度
+Length R/W 备注Note数据内容Content 单位
+Unit
+
+--- PAGE 2 ---
+0x007C 124 UINT32 4 R W 电池设计容量CapBatCell mAH
+0x0080 128 UINT32 4 R W 短路保护延迟SCPDelay us
+0x0084 132 UINT32 4 R W 均衡起始电压VolStartBalan mV
+0x0088 136 UINT32 4 R W 连接线内阻0CellConWireRes0 uΩ
+0x008C 140 UINT32 4 R W 连接线内阻1CellConWireRes1 uΩ
+0x0090 144 UINT32 4 R W 连接线内阻2CellConWireRes2 uΩ
+0x0094 148 UINT32 4 R W 连接线内阻3CellConWireRes3 uΩ
+0x0098 152 UINT32 4 R W 连接线内阻4CellConWireRes4 uΩ
+0x009C 156 UINT32 4 R W 连接线内阻5CellConWireRes5 uΩ
+0x00A0 160 UINT32 4 R W 连接线内阻6CellConWireRes6 uΩ
+0x00A4 164 UINT32 4 R W 连接线内阻7CellConWireRes7 uΩ
+0x00A8 168 UINT32 4 R W 连接线内阻8CellConWireRes8 uΩ
+0x00AC 172 UINT32 4 R W 连接线内阻9CellConWireRes9 uΩ
+0x00B0 176 UINT32 4 R W 连接线内阻10CellConWireRes10 uΩ
+0x00B4 180 UINT32 4 R W 连接线内阻11CellConWireRes11 uΩ
+0x00B8 184 UINT32 4 R W 连接线内阻12CellConWireRes12 uΩ
+0x00BC 188 UINT32 4 R W 连接线内阻13CellConWireRes13 uΩ
+0x00C0 192 UINT32 4 R W 连接线内阻14CellConWireRes14 uΩ
+0x00C4 196 UINT32 4 R W 连接线内阻15CellConWireRes15 uΩ
+0x00C8 200 UINT32 4 R W 连接线内阻16CellConWireRes16 uΩ
+0x00CC 204 UINT32 4 R W 连接线内阻17CellConWireRes17 uΩ
+0x00D0 208 UINT32 4 R W 连接线内阻18CellConWireRes18 uΩ
+0x00D4 212 UINT32 4 R W 连接线内阻19CellConWireRes19 uΩ
+0x00D8 216 UINT32 4 R W 连接线内阻20CellConWireRes20 uΩ
+0x00DC 220 UINT32 4 R W 连接线内阻21CellConWireRes21 uΩ
+0x00E0 224 UINT32 4 R W 连接线内阻22CellConWireRes22 uΩ
+0x00E4 228 UINT32 4 R W 连接线内阻23CellConWireRes23 uΩ
+0x00E8 232 UINT32 4 R W 连接线内阻24CellConWireRes24 uΩ
+0x00EC 236 UINT32 4 R W 连接线内阻25CellConWireRes25 uΩ
+0x00F0 240 UINT32 4 R W 连接线内阻26CellConWireRes26 uΩ
+0x00F4 244 UINT32 4 R W 连接线内阻27CellConWireRes27 uΩ
+0x00F8 248 UINT32 4 R W 连接线内阻28CellConWireRes28 uΩ
+0x00FC 252 UINT32 4 R W 连接线内阻29CellConWireRes29 uΩ
+0x0100 256 UINT32 4 R W 连接线内阻30CellConWireRes30 uΩ
+0x0104 260 UINT32 4 R W 连接线内阻31CellConWireRes31 uΩ
+0x1000
+
+--- PAGE 3 ---
+0x0108 264 UINT32 4 R W 设备地址DevAddr H
+0x010C 268 UINT32 4 R W 放电预充时间TIMProdischarge S
+RW 加热开关HeatEN 1：打开 ;  0：关闭 BIT0
+RW 温度传感器屏蔽Disable temp-sensor 1：打开 ;  0：关闭 BIT1
+RW GPS心跳检测GPS Heartbeat 1：打开 ;  0：关闭 BIT2
+RW 复用端口功能Port Switch 1：RS485 ;  0：CAN BIT3
+RW 显示器常亮LCD Always On 1：打开 ;  0：关闭 BIT4
+RW 专用充电器识别Special Charger 1：打开 ;  0：关闭 BIT5
+RW 智能休眠SmartSleep 1：打开 ;  0：关闭 BIT6
+RW 禁用并联限流DisablePCLModule 1：打开 ;  0：关闭 BIT7
+RW 数据定时存储TimedStoredData 1：打开 ;  0：关闭 BIT8
+RW 充电浮动模式ChargingFloatMode 1：打开 ;  0：关闭 BIT9
+UINT8 RW 智能休眠时间TIMSmartSleep H
+UINT8 R 数据域使能控制0
+0x0000 0 UINT16 2 R 单体电压0CellVol0 mV
+0x0002 2 UINT16 2 R 单体电压1CellVol1 mV
+0x0004 4 UINT16 2 R 单体电压2CellVol2 mV
+0x0006 6 UINT16 2 R 单体电压3CellVol3 mV
+0x0008 8 UINT16 2 R 单体电压4CellVol4 mV
+0x000A 10 UINT16 2 R 单体电压5CellVol5 mV
+0x000C 12 UINT16 2 R 单体电压6CellVol6 mV
+0x000E 14 UINT16 2 R 单体电压7CellVol7 mV
+0x0010 16 UINT16 2 R 单体电压8CellVol8 mV
+0x0012 18 UINT16 2 R 单体电压9CellVol9 mV
+0x0014 20 UINT16 2 R 单体电压10CellVol10 mV
+0x0016 22 UINT16 2 R 单体电压11CellVol11 mV
+0x0018 24 UINT16 2 R 单体电压12CellVol12 mV
+0x001A 26 UINT16 2 R 单体电压13CellVol13 mV
+0x001C 28 UINT16 2 R 单体电压14CellVol14 mV
+0x001E 30 UINT16 2 R 单体电压15CellVol15 mV
+0x0020 32 UINT16 2 R 单体电压16CellVol16 mV
+0x0022 34 UINT16 2 R 单体电压17CellVol17 mV
+0x0024 36 UINT16 2 R 单体电压18CellVol18 mV
+0x0026 38 UINT16 2 R 单体电压19CellVol19 mV
+0x0028 40 UINT16 2 R 单体电压20CellVol20 mV
+0x0114 276 UINT16 2
+22800x0118
+
+--- PAGE 4 ---
+0x002A 42 UINT16 2 R 单体电压21CellVol21 mV
+0x002C 44 UINT16 2 R 单体电压22CellVol22 mV
+0x002E 46 UINT16 2 R 单体电压23CellVol23 mV
+0x0030 48 UINT16 2 R 单体电压24CellVol24 mV
+0x0032 50 UINT16 2 R 单体电压25CellVol25 mV
+0x0034 52 UINT16 2 R 单体电压26CellVol26 mV
+0x0036 54 UINT16 2 R 单体电压27CellVol27 mV
+0x0038 56 UINT16 2 R 单体电压28CellVol28 mV
+0x003A 58 UINT16 2 R 单体电压29CellVol29 mV
+0x003C 60 UINT16 2 R 单体电压30CellVol30 mV
+0x003E 62 UINT16 2 R 单体电压31CellVol31 mV
+0x0040 64 UINT32 4 R 电池状态CellSta BIT [n]为1表示该电池存在
+0x0044 68 UINT16 2 R 单体平均电压CellVolAve mV
+0x0046 70 UINT16 2 R 最大压差CellVdifMax mV
+UINT8 R 最大电压单体编号MaxVolCellNbr
+UINT8 R 最小电压单体编号MinVolCellNbr
+0x004A 74 UINT16 2 R 均衡线电阻0CellWireRes0 mΩ
+0x004C 76 UINT16 2 R 均衡线电阻1CellWireRes1 mΩ
+0x004E 78 UINT16 2 R 均衡线电阻2CellWireRes2 mΩ
+0x0050 80 UINT16 2 R 均衡线电阻3CellWireRes3 mΩ
+0x0052 82 UINT16 2 R 均衡线电阻4CellWireRes4 mΩ
+0x0054 84 UINT16 2 R 均衡线电阻5CellWireRes5 mΩ
+0x0056 86 UINT16 2 R 均衡线电阻6CellWireRes6 mΩ
+0x0058 88 UINT16 2 R 均衡线电阻7CellWireRes7 mΩ
+0x005A 90 UINT16 2 R 均衡线电阻8CellWireRes8 mΩ
+0x005C 92 UINT16 2 R 均衡线电阻9CellWireRes9 mΩ
+0x005E 94 UINT16 2 R 均衡线电阻10CellWireRes10 mΩ
+0x0060 96 UINT16 2 R 均衡线电阻11CellWireRes11 mΩ
+0x0062 98 UINT16 2 R 均衡线电阻12CellWireRes12 mΩ
+0x0064 100 UINT16 2 R 均衡线电阻13CellWireRes13 mΩ
+0x0066 102 UINT16 2 R 均衡线电阻14CellWireRes14 mΩ
+0x0068 104 UINT16 2 R 均衡线电阻15CellWireRes15 mΩ
+0x006A 106 UINT16 2 R 均衡线电阻16CellWireRes16 mΩ
+0x006C 108 UINT16 2 R 均衡线电阻17CellWireRes17 mΩ
+0x006E 110 UINT16 2 R 均衡线电阻18CellWireRes18 mΩ
+720x0048 2
+
+--- PAGE 5 ---
+0x0070 112 UINT16 2 R 均衡线电阻19CellWireRes19 mΩ
+0x0072 114 UINT16 2 R 均衡线电阻20CellWireRes20 mΩ
+0x0074 116 UINT16 2 R 均衡线电阻21CellWireRes21 mΩ
+0x0076 118 UINT16 2 R 均衡线电阻22CellWireRes22 mΩ
+0x0078 120 UINT16 2 R 均衡线电阻23CellWireRes23 mΩ
+0x007A 122 UINT16 2 R 均衡线电阻24CellWireRes24 mΩ
+0x007C 124 UINT16 2 R 均衡线电阻25CellWireRes25 mΩ
+0x007E 126 UINT16 2 R 均衡线电阻26CellWireRes26 mΩ
+0x0080 128 UINT16 2 R 均衡线电阻27CellWireRes27 mΩ
+0x0082 130 UINT16 2 R 均衡线电阻28CellWireRes28 mΩ
+0x0084 132 UINT16 2 R 均衡线电阻29CellWireRes29 mΩ
+0x0086 134 UINT16 2 R 均衡线电阻30CellWireRes30 mΩ
+0x0088 136 UINT16 2 R 均衡线电阻31CellWireRes31 mΩ
+0x008A 138 INT16 2 R 功率板温度TempMos 0.1 ℃
+0x008C 140 UINT32 4 R 均衡线电阻状态CellWireResSta BIT [n]为1表示该均衡线报警
+0x0090 144 UINT32 4 R 电池总电压BatVol mV
+0x0094 148 UINT32 4 R 电池功率BatWatt mW
+0x0098 152 INT32 4 R 电池电流BatCurrent mA
+0x009C 156 INT16 2 R 电池温度TempBat 1 0.1 ℃
+0x009E 158 INT16 2 R 电池温度TempBat 2 0.1 ℃
+均衡线电阻过大AlarmWireRes 1：故障 ;  0：正常 BIT0
+MOS过温保护AlarmMosOTP 1 ：故障 ;  0：正常 BIT1
+单体数量与设置值不符合AlarmCellQuantity 1：故障 ;  0：正常 BIT2
+电流传感器异常AlarmCurSensorErr 1：故障 ;  0：正常 BIT3
+单体过压保护AlarmCellOVP 1 ：故障 ;  0：正常 BIT4
+电池过压保护AlarmBatOVP 1 ：故障 ;  0：正常 BIT5
+充电过流保护AlarmChOCP 1 ：故障 ;  0：正常 BIT6
+充电短路保护AlarmChSCP 1 ：故障 ;  0：正常 BIT7
+充电过温保护AlarmChOTP 1 ：故障 ;  0：正常 BIT8
+充电低温保护AlarmChUTP 1 ：故障 ;  0：正常 BIT9
+内部通信异常AlarmCPUAuxCommuErr 1：故障 ;  0：正常 BIT10
+单体欠压保护AlarmCellUVP 1 ：故障 ;  0：正常 BIT11
+电池欠压保护AlarmBatUVP 1 ：故障 ;  0：正常 BIT12
+放电过流保护AlarmDchOCP 1 ：故障 ;  0：正常 BIT13
+放电短路保护AlarmDchSCP 1 ：故障 ;  0：正常 BIT14
+0x1200
+0x00A0 160 R 4UINT32
+
+--- PAGE 6 ---
+放电过温保护AlarmDchOTP 1：故障 ;  0：正常 BIT15
+充电管异常AlarmChargeMOS 1 ：故障 ;  0：正常 BIT16
+放电管异常AlarmDischargeMOS 1：故障 ;  0：正常 BIT17
+GPS断开连接GPSDisconneted 1：故障 ;  0：正常 BIT18
+请及时修改授权密码Modify PWD. in time 1：故障 ;  0：正常 BIT19
+放电开启失败Discharge On Failed 1：故障 ;  0：正常 BIT20
+电池超温报警Battery Over Temp Alarm 1：故障 ;  0：正常 BIT21
+温度传感器异常Temperature sensor anomaly
+并联模块故障PLCModule anomaly
+0x00A4 164 INT16 2 R 均衡电流BalanCurrent mA
+UINT8 R 均衡状态BalanSta % 2：放电;  1：充电 ;  0：关闭
+UINT8 R 剩余电量SOCStateOfcharge
+0x00A8 168 INT32 4 R 剩余容量SOCCapRemain mAH
+0x00AC 172 UINT32 4 R 电池实际容量SOCFullChargeCap mAH
+0x00B0 176 UINT32 4 R 循环次数SOCCycleCount 次
+0x00B4 180 UINT32 4 R 循环总容量SOCCycleCap mAH
+UINT8 R SOH估值SOCSOH %
+UINT8 R 预充状态Precharge1 ：打开 ;  0：关闭
+0x00BA 186 UINT16 2 R 用户层报警UserAlarm
+0x00BC 188 UINT32 4 R 运行时间RunTime S
+UINT8 R 充电状态Charge1 ：打开 ;  0：关闭
+UINT8 R 放电状态Discharge1 ：打开 ;  0：关闭
+0x00C2 194 UINT16 2 R 用户层报警2UserAlarm2
+0x00C4 196 UINT16 2 R 放电过流保护解除时间TimeDcOCPR S
+0x00C6 198 UINT16 2 R 放电短路保护解除时间TimeDcSCPR S
+0x00C8 200 UINT16 2 R 充电过流保护解除时间TimeCOCPR S
+0x00CA 202 UINT16 2 R 充电短路保护解除时间TimeCSCPR S
+0x00CC 204 UINT16 2 R 单体欠压保护解除时间TimeUVPR S
+0x00CE 206 UINT16 2 R 单体过压保护解除时间TimeOVPR S
+MOS温度传感器MOS TempSensorAbsent BIT0
+电池温度传感器1 BATTempSensor1Absent 1：正常 ;  0：缺失 BIT1
+电池温度传感器2 BATTempSensor2Absent 1：正常 ;  0：缺失 BIT2
+电池温度传感器3 BATTempSensor3Absent 1：正常 ;  0：缺失 BIT3
+电池温度传感器4 BATTempSensor4Absent 1：正常 ;  0：缺失 BIT4
+电池温度传感器5 BATTempSensor5Absent 1：正常 ;  0：缺失 BIT5
+166
+184
+1920x00C0
+0x00B8
+UINT80x00D0 208
+2
+2
+2
+2R
+0x00A6
+
+--- PAGE 7 ---
+UINT8 R 加热状态Heating 1：打开 ;  0：关闭
+0x00D2 210 UINT16 2 R Reserved
+0x00D4 212 UINT16 2 R 应急开关时间TimeEmergency S
+0x00D6 214 UINT16 2 R 放电电流修正因子BatDisCurCorrect
+0x00D8 216 UINT16 2 R 充电电流传感器电压VolChargCur mV
+0x00DA 218 UINT16 2 R 放电电流传感器电压VolDischargCur mV
+0x00DC 220 FLOAT 4 R 电池电压修正因子BatVolCorrect
+0x00E4 228 UINT16 2 R 电池电压BatVol 0.01V
+0x00E6 230 INT16 2 R 加热电流HeatCurrent mA
+UINT8 R 保留RVD
+UINT8 R 充电器状态ChargerPlugged 1 ：插入 ;  0：未插入
+0x00F0 240 UINT32 4 R 系统节拍SysRunTicks 0.1S
+0x00F8 248 INT16 2 R 电池温度TempBat 3 0.1 ℃
+0x00FA 250 INT16 2 R 电池温度TempBat 4 0.1 ℃
+0x00FC 252 INT16 2 R 电池温度TempBat 5 0.1 ℃
+0x0100 256 UINT32 4 R RTC计数器RTCTicks 自2020-1-1开始计时
+0x0108 264 UINT32 4 R 进入休眠时间TimeEnterSleep S
+UINT8 并联限流模块状态PCLModuleSta 1 ：打开 ;  0：关闭
+UINT8 保留RVD
+0x0000 0 ASCII 16 R 厂商型号ManufacturerDeviceID
+0x0010 16 ASCII 8 R 硬件版本号HardwareVersion
+0x0018 24 ASCII 8 R 软件版本号SoftwareVersion
+0x0020 32 UINT32 4 R 累计运行时间ODDRunTime S
+0x0024 36 UINT32 4 R 上电次数PWROnTimes 次
+UINT8 R W 串口1协议UART1MPRTOLNbr
+UINT8 R W CAN协议CANMPRTOLNbr
+0x00B4 180 UINT8 16 R 串口1协议控制UART1MPRTOLEnable
+UINT8 R W 串口2协议UART2MPRTOLNbr
+UINT8 R 串口2协议控制UART2MPRTOLEnable[0]
+UINT8 LCD蜂鸣器触发源LCDBuzzerTrigger
+UINT8 干节点1触发源DRY1Trigger
+UINT8 R W 干节点2触发源DRY2Trigger
+UINT8 R UART协议库版本UARTMPTLVer
+0x00E8 232 INT32 4 R W LCD蜂鸣器触发值LCDBuzzerTriggerVal
+0x00EC 236 INT32 4 R W LCD蜂鸣器恢复值LCDBuzzerReleaseVal
+0x1400
+2
+2R2680x010C
+21780x00B2
+2212
+2
+RW20x00E4 228
+0x00E6 230
+0x00D4
+2380x00EE
+
+--- PAGE 8 ---
+0x00F0 240 INT32 4 R W 干节点1触发值DRY1TriggerVal
+0x00F4 244 INT32 4 R W 干节点1触发值DRY1ReleaseVal
+0x00F8 248 INT32 4 R W 干节点2触发值DRY2TriggerVal
+0x00FC 252 INT32 4 R W 干节点2恢复值DRY2ReleaseVal
+0x0100 256 INT32 4 R W 数据存储周期DataStoredPeriod
+充电时间RCVTime 0.1H
+浮充时间RFVTime 0.1H
+CAN协议库版本CANMPTLVer
+保留RVD
+0x0000 0 UINT16 4 W 电压校准VoltageCalibration mV
+0x0004 4 UINT16 2 W 保护板关机Shutdown
+0x0006 6 UINT16 4 W 电流校准CurrentCalibration mA
+0x000A 10 UINT16 2 W 一键三元LI-ION
+0x000C 12 UINT16 2 W 一键铁锂LIFEPO4
+0x000E 14 UINT16 2 W 一键钛酸锂LTO
+0x0010 16 UINT16 2 W 应急启动Emergency
+0x0012 18 UINT32 4 W 对时Timecalibration
+0x1600
+0x0104
+0x0106 R
+RW
+2
+2UINT8260
+262 UINT8
+

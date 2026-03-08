@@ -1,0 +1,4 @@
+pymodbus>=3.6
+paho-mqtt
+pyyaml
+python-dotenv
