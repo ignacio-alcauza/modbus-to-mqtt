@@ -227,8 +227,11 @@ class JKBMSClient(BaseModbusClient):
                     data[key] = [round(v * reg.get('scale', 1.0), 3) for v in chunk]
                 else:
                     val = self.decode_value(chunk, reg)
-                    if key == 'UPTIME' and val is not None:
-                        val = self._format_uptime(val)
+                    if val is not None:
+                        if key == 'UPTIME':
+                            val = self._format_uptime(val)
+                        elif key in ['CHARGE_ON', 'DISCHARGE_ON']:
+                            val = "ON" if val >= 1 else "OFF"
                     data[key] = val
 
         # Alarm Logic
