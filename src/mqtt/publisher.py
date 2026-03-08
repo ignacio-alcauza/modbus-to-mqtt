@@ -51,7 +51,7 @@ class MQTTPublisher:
         except Exception as e:
             logger.error(f"Error publishing data to {topic}: {e}")
 
-    def publish_discovery(self, device_id: str, device_name: str, state_topic: str, sensors: list, discovery_prefix: str = "homeassistant"):
+    def publish_discovery(self, device_id: str, device_name: str, state_topic: str, sensors: list, discovery_prefix: str = "homeassistant", node_id: str = None):
         """Publish Home Assistant MQTT Discovery configuration."""
         device_info = {
             "identifiers": [device_id],
@@ -60,14 +60,19 @@ class MQTTPublisher:
         }
         
         for sensor in sensors:
-            # Topic format: <discovery_prefix>/sensor/<node_id>/<object_id>/config
-            # The 'device_id' here might contain slashes to form the tree 'geekcomit12/jkbms'
-            discovery_topic = f"{discovery_prefix}/sensor/{device_id}/{sensor['id']}/config"
+            # Topic format: <discovery_prefix>/<component>/<node_id>/<object_id>/config
+            # Home Assistant strict regex: node_id and object_id cannot contain slashes.
+            if node_id:
+                safe_node_id = node_id.replace("/", "_")
+                object_id = f"{device_name.lower().replace(' ', '_')}_{sensor['id']}"
+                discovery_topic = f"{discovery_prefix}/sensor/{safe_node_id}/{object_id}/config"
+            else:
+                safe_device_id = device_id.replace("/", "_")
+                discovery_topic = f"{discovery_prefix}/sensor/{safe_device_id}/{sensor['id']}/config"
             
-            safe_device_id = device_id.replace("/", "_")
             payload = {
                 "name": sensor['name'],
-                "unique_id": f"{safe_device_id}_{sensor['id']}",
+                "unique_id": f"{device_id}_{sensor['id']}".replace("/", "_"),
                 "state_topic": state_topic,
                 "value_template": sensor.get('value_template'),
                 "device": device_info

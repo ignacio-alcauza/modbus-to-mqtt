@@ -88,9 +88,9 @@ def main():
             unit_id=jkbms_conf.get("modbus_unit", 1)
         )
         
-        # Build topic dynamically
+        # Build topic dynamically with /state
         subtopic = jkbms_conf.get("mqtt_subtopic", "jkbms")
-        full_topic = f"{base_topic}/{subtopic}"
+        full_topic = f"{base_topic}/{subtopic}/state"
         
         devices.append({
             "name": "jkbms",
@@ -110,9 +110,9 @@ def main():
             unit_id=deye_conf.get("modbus_unit", 1)
         )
         
-        # Build topic dynamically
+        # Build topic dynamically with /state
         subtopic = deye_conf.get("mqtt_subtopic", "deye_inverter")
-        full_topic = f"{base_topic}/{subtopic}"
+        full_topic = f"{base_topic}/{subtopic}/state"
         
         devices.append({
             "name": "deye_inverter",
@@ -133,18 +133,21 @@ def main():
     for dev in devices:
         sensors = dev["client"].get_discovery_sensors()
         if sensors:
-            # Create a unique device ID (e.g. geekcomit12/jkbms)
+            # Create a unique device ID without slashes so HA discovery doesn't break
+            # Node ID must be alphanumeric and underscore
             node_name = base_topic.split("/")[-1] if "/" in base_topic else base_topic
-            device_id = f"{node_name}/{dev['name']}"
+            device_id = f"{node_name}_{dev['name']}"
             
             logger.info(f"Publishing HA Discovery for {dev['name']} ({len(sensors)} sensors)")
+
             try:
                 publisher.publish_discovery(
                     device_id=device_id,
                     device_name=dev["name"].upper(),
                     state_topic=dev["topic"],
                     sensors=sensors,
-                    discovery_prefix=discovery_prefix
+                    discovery_prefix=discovery_prefix,
+                    node_id=node_name
                 )
             except Exception as e:
                 logger.error(f"Failed to publish discovery for {dev['name']}: {e}")
