@@ -61,6 +61,7 @@ class MQTTPublisher:
         
         for sensor in sensors:
             # Topic format: <discovery_prefix>/sensor/<node_id>/<object_id>/config
+            # The 'device_id' here might contain slashes to form the tree 'geekcomit12/jkbms'
             discovery_topic = f"{discovery_prefix}/sensor/{device_id}/{sensor['id']}/config"
             
             safe_device_id = device_id.replace("/", "_")
