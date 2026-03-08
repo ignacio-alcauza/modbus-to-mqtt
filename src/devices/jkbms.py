@@ -212,3 +212,56 @@ class JKBMSClient(BaseModbusClient):
         data['_raw_data'] = full_block
         
         return data
+
+    def get_discovery_sensors(self) -> list:
+        sensors = []
+        
+        # Mapping unit to HA device_class
+        class_map = {
+            'V': 'voltage',
+            'mV': 'voltage',
+            'A': 'current',
+            'W': 'power',
+            '°C': 'temperature',
+            '%': 'battery',
+            'Ah': 'energy_storage',
+            's': 'duration'
+        }
+        
+        for key, reg in REGISTERS.items():
+            if key in ['CELL_VOLTAGES', 'CELL_RESISTANCES']:
+                count = reg.get('count', 1)
+                unit = reg.get('unit')
+                dclass = class_map.get(unit)
+                
+                name_prefix = "Cell Voltage" if key == 'CELL_VOLTAGES' else "Cell Resistance"
+                
+                for i in range(count):
+                    sensors.append({
+                        'id': f"{key.lower()}_{i+1}",
+                        'name': f"{name_prefix} {i+1}",
+                        'unit': unit,
+                        'device_class': dclass,
+                        'value_template': f"{{{{ value_json.{key}[{i}] }}}}"
+                    })
+            else:
+                unit = reg.get('unit')
+                dclass = class_map.get(unit)
+                name = key.replace('_', ' ').title()
+                
+                sensors.append({
+                    'id': key.lower(),
+                    'name': name,
+                    'unit': unit,
+                    'device_class': dclass,
+                    'value_template': f"{{{{ value_json.{key} }}}}"
+                })
+        
+        # Add parsed_alarms as a generic sensor
+        sensors.append({
+            'id': 'parsed_alarms',
+            'name': 'Active Alarms',
+            'value_template': '{{ value_json.parsed_alarms | join(", ") }}'
+        })
+        
+        return sensors

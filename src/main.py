@@ -128,6 +128,27 @@ def main():
         logger.warning("No active devices found in config.yml. Exiting.")
         sys.exit(0)
 
+    # Publish MQTT Discovery Configs for Home Assistant
+    discovery_prefix = broker_conf.get("discovery_prefix", "homeassistant")
+    for dev in devices:
+        sensors = dev["client"].get_discovery_sensors()
+        if sensors:
+            # Create a unique device ID (e.g. geekcomit12_jkbms)
+            node_name = base_topic.split("/")[-1] if "/" in base_topic else base_topic
+            device_id = f"{node_name}_{dev['name']}"
+            
+            logger.info(f"Publishing HA Discovery for {dev['name']} ({len(sensors)} sensors)")
+            try:
+                publisher.publish_discovery(
+                    device_id=device_id,
+                    device_name=dev["name"].upper(),
+                    state_topic=dev["topic"],
+                    sensors=sensors,
+                    discovery_prefix=discovery_prefix
+                )
+            except Exception as e:
+                logger.error(f"Failed to publish discovery for {dev['name']}: {e}")
+
     logger.info("Starting main loop...")
     
     try:

@@ -50,3 +50,36 @@ class MQTTPublisher:
                 logger.error(f"Failed to publish to {topic}, return code: {result.rc}")
         except Exception as e:
             logger.error(f"Error publishing data to {topic}: {e}")
+
+    def publish_discovery(self, device_id: str, device_name: str, state_topic: str, sensors: list, discovery_prefix: str = "homeassistant"):
+        """Publish Home Assistant MQTT Discovery configuration."""
+        device_info = {
+            "identifiers": [device_id],
+            "name": device_name,
+            "manufacturer": "Modbus2MQTT Integration"
+        }
+        
+        for sensor in sensors:
+            # Topic format: <discovery_prefix>/sensor/<node_id>/<object_id>/config
+            discovery_topic = f"{discovery_prefix}/sensor/{device_id}/{sensor['id']}/config"
+            
+            payload = {
+                "name": sensor['name'],
+                "unique_id": f"{device_id}_{sensor['id']}",
+                "state_topic": state_topic,
+                "value_template": sensor.get('value_template'),
+                "device": device_info
+            }
+            
+            if sensor.get('unit'):
+                payload["unit_of_measurement"] = sensor['unit']
+            if sensor.get('device_class'):
+                payload["device_class"] = sensor['device_class']
+                if sensor['device_class'] == "energy_storage":
+                    payload["device_class"] = "energy" # Fallback if energy_storage isn't perfectly supported
+                
+            try:
+                self.client.publish(discovery_topic, json.dumps(payload), retain=True)
+                logger.debug(f"Published discovery to {discovery_topic}")
+            except Exception as e:
+                logger.error(f"Failed to publish discovery for {sensor['id']}: {e}")

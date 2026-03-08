@@ -63,3 +63,7 @@ class BaseModbusClient:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.disconnect()
         return False
+
+    def get_discovery_sensors(self) -> list:
+        """Return a list of HA MQTT discovery definitions for this device."""
+        return []
