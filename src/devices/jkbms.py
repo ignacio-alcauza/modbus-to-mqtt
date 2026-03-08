@@ -100,7 +100,6 @@ REGISTERS = {
         'type': 'UINT32',
         # Note: Shares high word with CELL_VOLT_DIFF in this firmware
         'count': 2,
-        'unit': 's',
     },
 
     # Temperature Probes block 2 (Base 0x12B0)
@@ -183,6 +182,32 @@ class JKBMSClient(BaseModbusClient):
         
         return round(val * scale, 3)
 
+    def _format_uptime(self, seconds: int) -> str:
+        if not isinstance(seconds, (int, float)) or seconds < 0:
+            return "0s"
+            
+        minutes, sec = divmod(int(seconds), 60)
+        hours, minutes = divmod(minutes, 60)
+        days, hours = divmod(hours, 24)
+        years, days = divmod(days, 365)
+        months, days = divmod(days, 30)
+        
+        if years > 0:
+            m_str = f", {months} mes{'es' if months != 1 else ''}" if months > 0 else ""
+            return f"{years} año{'s' if years > 1 else ''}{m_str}"
+        if months > 0:
+            d_str = f", {days} día{'s' if days != 1 else ''}" if days > 0 else ""
+            return f"{months} mes{'es' if months > 1 else ''}{d_str}"
+        if days > 0:
+            h_str = f", {hours}h" if hours > 0 else ""
+            return f"{days} día{'s' if days > 1 else ''}{h_str}"
+        
+        parts = []
+        if hours > 0: parts.append(f"{hours}h")
+        if minutes > 0: parts.append(f"{minutes}m")
+        if sec > 0 or not parts: parts.append(f"{sec}s")
+        return " ".join(parts)
+
     def get_all_data(self) -> dict:
         data = {}
         # Read standard monitoring and settings block (0x1200 - 0x12BF)
@@ -201,7 +226,10 @@ class JKBMSClient(BaseModbusClient):
                 if key in ['CELL_VOLTAGES', 'CELL_RESISTANCES']:
                     data[key] = [round(v * reg.get('scale', 1.0), 3) for v in chunk]
                 else:
-                    data[key] = self.decode_value(chunk, reg)
+                    val = self.decode_value(chunk, reg)
+                    if key == 'UPTIME' and val is not None:
+                        val = self._format_uptime(val)
+                    data[key] = val
 
         # Alarm Logic
         alarm_val = int(data.get('ALARMS_32BIT', 0))
