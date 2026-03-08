@@ -1,6 +1,7 @@
 services:
   modbus-bridge:
     build: .
+    image: modbus-to-mqtt-bridge
     container_name: modbus-to-mqtt-bridge
     restart: unless-stopped
     env_file:
