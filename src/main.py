@@ -113,6 +113,13 @@ def main():
         logger.warning("No active devices found in config.yml. Exiting.")
         sys.exit(0)
 
+    # Initial heartbeat for Docker healthcheck
+    try:
+        with open("/tmp/heartbeat", "w") as f:
+            f.write(str(int(time.time())))
+    except Exception as e:
+        logger.error(f"Failed to create initial heartbeat file: {e}")
+
     logger.info("Starting main loop...")
     
     try:
