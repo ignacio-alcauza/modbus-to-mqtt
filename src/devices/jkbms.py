@@ -130,11 +130,11 @@ REGISTERS = {
     },
     
     # Status Flags
-    'CHARGE_ON': {
+    'CHARGE': {
         'addr': 0x12A0,
         'type': 'UINT8_HIGH',
     },
-    'DISCHARGE_ON': {
+    'DISCHARGE': {
         'addr': 0x12A0,
         'type': 'UINT8_LOW',
     },
@@ -230,7 +230,7 @@ class JKBMSClient(BaseModbusClient):
                     if val is not None:
                         if key == 'UPTIME':
                             val = self._format_uptime(val)
-                        elif key in ['CHARGE_ON', 'DISCHARGE_ON']:
+                        elif key in ['CHARGE', 'DISCHARGE']:
                             val = "ON" if val >= 1 else "OFF"
                     data[key] = val
 
