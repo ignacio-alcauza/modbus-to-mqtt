@@ -147,6 +147,27 @@ REGISTERS = {
         'subtype': 'BITMASK',
     },
     
+    # Balancing
+    'BALANCE_CURRENT': {
+        'addr': 0x12A4,
+        'type': 'INT16',
+        'unit': 'A',
+        'scale': 0.001,
+    },
+    'BALANCE_STATUS': {
+        'addr': 0x12A6,
+        'type': 'UINT8_HIGH',
+    },
+    
+    # Capacities
+    'TOTAL_CHG_CAPACITY': {
+        'addr': 0x12B4,
+        'type': 'UINT32',
+        'count': 2,
+        'unit': 'Ah',
+        'scale': 0.001,
+    },
+    
     # Status Flags
     'CHARGE': {
         'addr': 0x12A0,
@@ -250,7 +271,22 @@ class JKBMSClient(BaseModbusClient):
                             val = self._format_uptime(val)
                         elif key in ['CHARGE', 'DISCHARGE']:
                             val = "ON" if val >= 1 else "OFF"
+                        elif key == 'BALANCE_STATUS':
+                            if val == 1: val = "Charging"
+                            elif val == 2: val = "Discharging"
+                            else: val = "Off"
                     data[key] = val
+
+        # Derived logic for power
+        bat_power = data.get('BAT_POWER', 0.0)
+        bat_current = data.get('BAT_CURRENT', 0.0)
+        
+        if bat_current > 0:
+            data['CHARGING_POWER'] = round(bat_power, 3)
+            data['DISCHARGING_POWER'] = 0.0
+        else:
+            data['CHARGING_POWER'] = 0.0
+            data['DISCHARGING_POWER'] = round(abs(bat_power), 3)
 
         # Alarm Logic
         alarm_val = int(data.get('ALARMS_32BIT', 0))
@@ -311,6 +347,22 @@ class JKBMSClient(BaseModbusClient):
             'id': 'parsed_alarms',
             'name': 'Active Alarms',
             'value_template': '{{ value_json.parsed_alarms | join(", ") }}'
+        })
+        
+        # Append derived parameters not explicitly in REGISTERS
+        sensors.append({
+            'id': 'charging_power',
+            'name': 'Charging Power',
+            'unit': 'W',
+            'device_class': 'power',
+            'value_template': '{{ value_json.CHARGING_POWER }}'
+        })
+        sensors.append({
+            'id': 'discharging_power',
+            'name': 'Discharging Power',
+            'unit': 'W',
+            'device_class': 'power',
+            'value_template': '{{ value_json.DISCHARGING_POWER }}'
         })
         
         return sensors
