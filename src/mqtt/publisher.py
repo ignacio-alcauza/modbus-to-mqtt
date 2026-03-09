@@ -84,9 +84,12 @@ class MQTTPublisher:
                 payload["device_class"] = sensor['device_class']
                 if sensor['device_class'] == "energy_storage":
                     payload["device_class"] = "energy" # Fallback if energy_storage isn't perfectly supported
+                    payload["state_class"] = "total_increasing"
+                elif sensor['device_class'] in ["voltage", "current", "power", "temperature", "battery"]:
+                    payload["state_class"] = "measurement"
                 
             try:
-                self.client.publish(discovery_topic, json.dumps(payload), retain=True)
+                self.client.publish(discovery_topic, json.dumps(payload), retain=True, qos=1)
                 logger.debug(f"Published discovery to {discovery_topic}")
             except Exception as e:
                 logger.error(f"Failed to publish discovery for {sensor['id']}: {e}")
