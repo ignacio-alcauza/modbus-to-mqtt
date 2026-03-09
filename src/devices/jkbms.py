@@ -273,7 +273,7 @@ class JKBMSClient(BaseModbusClient):
             'W': 'power',
             '°C': 'temperature',
             '%': 'battery',
-            'Ah': 'energy_storage',
+            'Ah': None, # Let HA treat Ah as a standard numerical sensor
             's': 'duration'
         }
         
