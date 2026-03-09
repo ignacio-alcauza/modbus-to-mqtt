@@ -13,8 +13,8 @@ REGISTERS = {
         'addr': 0x1200,
         'count': 16,
         'type': 'UINT16',
-        'unit': 'mV',
-        'scale': 1.0,
+        'unit': 'V',
+        'scale': 0.001,
     },
     'CELL_AVG_VOLTAGE': {
         'addr': 0x1222,
