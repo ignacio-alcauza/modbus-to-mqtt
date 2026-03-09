@@ -16,6 +16,26 @@ REGISTERS = {
         'unit': 'mV',
         'scale': 1.0,
     },
+    'CELL_AVG_VOLTAGE': {
+        'addr': 0x1222,
+        'type': 'UINT16',
+        'unit': 'V',
+        'scale': 0.001,
+    },
+    'CELL_VOLT_DIFF': {
+        'addr': 0x1223,
+        'type': 'UINT16',
+        'unit': 'V',
+        'scale': 0.001,
+    },
+    'CELL_MAX_NO': {
+        'addr': 0x1224,
+        'type': 'UINT8_HIGH',
+    },
+    'CELL_MIN_NO': {
+        'addr': 0x1224,
+        'type': 'UINT8_LOW',
+    },
 
     # --- CELL RESISTANCES ---
     'CELL_RESISTANCES': {
@@ -89,16 +109,9 @@ REGISTERS = {
         'unit': 'Ah',
         'scale': 0.001,
     },
-    'CELL_VOLT_DIFF': {
-        'addr': 0x129E, 
-        'type': 'UINT16',
-        'unit': 'V',
-        'scale': 0.001,
-    },
     'UPTIME': {
         'addr': 0x129E, 
         'type': 'UINT32',
-        # Note: Shares high word with CELL_VOLT_DIFF in this firmware
         'count': 2,
     },
 
@@ -120,6 +133,11 @@ REGISTERS = {
         'type': 'INT16',
         'unit': '°C',
         'scale': 0.1,
+    },
+    
+    'CYCLE_COUNT': {
+        'addr': 0x12B6,
+        'type': 'UINT16',
     },
 
     'ALARMS_32BIT': {
