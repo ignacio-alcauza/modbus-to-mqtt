@@ -98,7 +98,7 @@ def main():
             "topic": full_topic,
             "interval": jkbms_conf.get("query_seconds", 30),
             "debug": jkbms_conf.get("debug_values", False),
-            "firmware_version": jkbms_conf.get("firmware_version"),
+            "firmware_version": jkbms_conf.get("firmware_version", jkbms_conf.get("software_version")),
             "hardware_version": jkbms_conf.get("hardware_version"),
             "last_run": 0
         })
@@ -122,7 +122,7 @@ def main():
             "topic": full_topic,
             "interval": deye_conf.get("query_seconds", 30),
             "debug": deye_conf.get("debug_values", False),
-            "firmware_version": deye_conf.get("firmware_version"),
+            "firmware_version": deye_conf.get("firmware_version", deye_conf.get("software_version")),
             "hardware_version": deye_conf.get("hardware_version"),
             "last_run": 0
         })
