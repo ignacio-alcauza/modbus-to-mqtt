@@ -51,13 +51,17 @@ class MQTTPublisher:
         except Exception as e:
             logger.error(f"Error publishing data to {topic}: {e}")
 
-    def publish_discovery(self, device_id: str, device_name: str, state_topic: str, sensors: list, discovery_prefix: str = "homeassistant", node_id: str = None):
+    def publish_discovery(self, device_id: str, device_name: str, state_topic: str, sensors: list, discovery_prefix: str = "homeassistant", node_id: str = None, sw_version: str = None, hw_version: str = None):
         """Publish Home Assistant MQTT Discovery configuration."""
         device_info = {
             "identifiers": [device_id],
             "name": device_name,
             "manufacturer": "Modbus2MQTT Integration"
         }
+        if sw_version:
+            device_info["sw_version"] = str(sw_version)
+        if hw_version:
+            device_info["hw_version"] = str(hw_version)
         
         for sensor in sensors:
             # Topic format: <discovery_prefix>/<component>/<node_id>/<object_id>/config

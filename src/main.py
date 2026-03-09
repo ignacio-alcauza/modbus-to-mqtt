@@ -98,6 +98,8 @@ def main():
             "topic": full_topic,
             "interval": jkbms_conf.get("query_seconds", 30),
             "debug": jkbms_conf.get("debug_values", False),
+            "firmware_version": jkbms_conf.get("firmware_version"),
+            "hardware_version": jkbms_conf.get("hardware_version"),
             "last_run": 0
         })
         logger.info(f"Initialized JKBMS at {jkbms.host}:{jkbms.port} (Topic: {full_topic}, Debug: {jkbms_conf.get('debug_values', False)})")
@@ -120,6 +122,8 @@ def main():
             "topic": full_topic,
             "interval": deye_conf.get("query_seconds", 30),
             "debug": deye_conf.get("debug_values", False),
+            "firmware_version": deye_conf.get("firmware_version"),
+            "hardware_version": deye_conf.get("hardware_version"),
             "last_run": 0
         })
         logger.info(f"Initialized Deye Inverter at {deye.host}:{deye.port} (Topic: {full_topic}, Debug: {deye_conf.get('debug_values', False)})")
@@ -138,6 +142,22 @@ def main():
             node_name = base_topic.split("/")[-1] if "/" in base_topic else base_topic
             device_id = f"{node_name}_{dev['name']}"
             
+            # Augment sensors with hardware and firmware if present
+            if dev.get("firmware_version"):
+                sensors.append({
+                    "id": "firmware_version",
+                    "name": "Firmware Version",
+                    "value_template": "{{ value_json.FIRMWARE_VERSION }}",
+                    "device_class": None
+                })
+            if dev.get("hardware_version"):
+                sensors.append({
+                    "id": "hardware_version",
+                    "name": "Hardware Version",
+                    "value_template": "{{ value_json.HARDWARE_VERSION }}",
+                    "device_class": None
+                })
+            
             logger.info(f"Publishing HA Discovery for {dev['name']} ({len(sensors)} sensors)")
 
             try:
@@ -147,7 +167,9 @@ def main():
                     state_topic=dev["topic"],
                     sensors=sensors,
                     discovery_prefix=discovery_prefix,
-                    node_id=node_name
+                    node_id=node_name,
+                    sw_version=dev.get("firmware_version"),
+                    hw_version=dev.get("hardware_version")
                 )
             except Exception as e:
                 logger.error(f"Failed to publish discovery for {dev['name']}: {e}")
@@ -184,6 +206,12 @@ def main():
                                 
                                 # Remove _raw_data before sending to MQTT
                                 data.pop("_raw_data", None)
+                                
+                                # Inject static version config into data payload
+                                if dev.get("firmware_version"):
+                                    data["FIRMWARE_VERSION"] = str(dev["firmware_version"])
+                                if dev.get("hardware_version"):
+                                    data["HARDWARE_VERSION"] = str(dev["hardware_version"])
                                 
                                 # Send data to MQTT
                                 publisher.publish_data(dev["topic"], data)
