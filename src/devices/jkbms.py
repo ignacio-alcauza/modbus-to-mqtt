@@ -113,12 +113,16 @@ REGISTERS = {
         'count': 2,
     },
     'CHARGE': {
-        'addr': 0x12A0,
-        'type': 'UINT8_HIGH',
+        'addr': 0x129C,
+        'type': 'UINT32_SWAP',
+        'count': 2,
+        'subtype': 'BIT_14',
     },
     'DISCHARGE': {
-        'addr': 0x12A0,
-        'type': 'UINT8_LOW',
+        'addr': 0x129C,
+        'type': 'UINT32_SWAP',
+        'count': 2,
+        'subtype': 'BIT_13', 
     },
     'ALARMS_32BIT': {
         'addr': 0x12A1, 
@@ -229,8 +233,10 @@ class JKBMSClient(BaseModbusClient):
                     if val is not None:
                         if key == 'UPTIME':
                             val = self._format_uptime(val)
-                        elif key in ['CHARGE', 'DISCHARGE']:
-                            val = "ON" if val >= 1 else "OFF"
+                        elif reg.get('subtype') == 'BIT_14':
+                            val = "ON" if (int(val) & (1 << 14)) else "OFF"
+                        elif reg.get('subtype') == 'BIT_13':
+                            val = "ON" if (int(val) & (1 << 13)) else "OFF"
                         elif key == 'BALANCE_STATUS':
                             if val == 1: val = "Charging"
                             elif val == 2: val = "Discharging"
