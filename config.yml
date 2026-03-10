@@ -13,6 +13,8 @@ jkbms:
   modbus_unit: 1
   query_seconds: 30
   debug_values: false
+  firmware_version: 27
+  hardware_version: 19
 
 deye_inverter:
   active: false

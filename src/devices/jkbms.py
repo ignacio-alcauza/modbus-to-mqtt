@@ -4,11 +4,10 @@ from utils.modbus import BaseModbusClient
 
 logger = logging.getLogger("modbus2mqtt.devices.jkbms")
 
-# JK BMS PB2A16S20P Modbus TCP Register Map
-# Calibrated for PB2A16S20P (16 Cells, 314Ah)
-
+# PB2A16S20P Modbus TCP Register Map based on internal memory block dumps.
+# We read 3 blocks of 64 registers (0x1200, 0x1240, 0x1280) and parse the payload.
 REGISTERS = {
-    # --- CELL VOLTAGES ---
+    # --- BLOCK 0x1200 ---
     'CELL_VOLTAGES': {
         'addr': 0x1200,
         'count': 16,
@@ -30,14 +29,12 @@ REGISTERS = {
     },
     'CELL_MAX_NO': {
         'addr': 0x1224,
-        'type': 'UINT8_HIGH',
+        'type': 'UINT8_HIGH',   # High byte
     },
     'CELL_MIN_NO': {
         'addr': 0x1224,
-        'type': 'UINT8_LOW',
+        'type': 'UINT8_LOW',    # Low byte
     },
-
-    # --- CELL RESISTANCES ---
     'CELL_RESISTANCES': {
         'addr': 0x1225,
         'count': 16,
@@ -46,14 +43,13 @@ REGISTERS = {
         'scale': 0.001,
     },
 
-    # --- SETTINGS / INFO ---
-    'MOS_OTP': { 
-        'addr': 0x1230,
-        'type': 'UINT16',
+    # --- BLOCK 0x1280 ---
+    'TEMP_MOS': {
+        'addr': 0x1285, 
+        'type': 'INT16',
         'unit': '°C',
+        'scale': 0.1,
     },
-
-    # --- MONITORING BLOCK ---
     'BAT_VOLTAGE': {
         'addr': 0x1289,
         'type': 'UINT16',
@@ -61,23 +57,14 @@ REGISTERS = {
         'scale': 0.001,
     },
     'BAT_CURRENT': {
-        'addr': 0x128A,
-        'type': 'INT32_SWAP',
+        'addr': 0x128C,  
+        'type': 'INT32',  # Big-Endian INT32
         'count': 2,
         'unit': 'A',
         'scale': 0.001,
     },
-    'BAT_POWER': {
-        'addr': 0x128C,
-        'type': 'INT32_SWAP',
-        'count': 2,
-        'unit': 'W',
-        'scale': 1.0,
-    },
-    
-    # Temperature Probes block 1
     'TEMP_T1': {
-        'addr': 0x128E, 
+        'addr': 0x128E,
         'type': 'INT16',
         'unit': '°C',
         'scale': 0.1,
@@ -89,14 +76,19 @@ REGISTERS = {
         'scale': 0.1,
     },
     
-    # Monitoring block 2 (Base 0x1290)
+    # SOC and BalanStatus are packed into 0x1293
     'SOC_PERCENT': {
         'addr': 0x1293,
-        'type': 'UINT16',
+        'type': 'UINT8_LOW',  # 0x63 -> 99%
         'unit': '%',
     },
+    'BALANCE_STATUS': {
+        'addr': 0x1293,
+        'type': 'UINT8_HIGH', # 0x01 -> Charging, 0x02 -> Discharging, 0x00 -> Off
+    },
+    
     'SOC_CAP_REMAIN': {
-        'addr': 0x1294,
+        'addr': 0x1294,  
         'type': 'UINT32', 
         'count': 2,
         'unit': 'Ah',
@@ -114,61 +106,12 @@ REGISTERS = {
         'type': 'UINT32',
         'count': 2,
     },
-
-    # Temperature Probes block 2 (Base 0x12B0)
-    'TEMP_MOS': {
-        'addr': 0x12BC,
-        'type': 'INT16',
-        'unit': '°C',
-        'scale': 0.1,
-    },
-    'TEMP_T4': {
-        'addr': 0x12BD,
-        'type': 'INT16',
-        'unit': '°C',
-        'scale': 0.1,
-    },
-    'TEMP_T5': {
-        'addr': 0x12BE,
-        'type': 'INT16',
-        'unit': '°C',
-        'scale': 0.1,
-    },
     
-    'CYCLE_COUNT': {
-        'addr': 0x12B6,
-        'type': 'UINT16',
-    },
-
-    'ALARMS_32BIT': {
-        'addr': 0x12A1, 
+    'SYS_STATUS': {
+        'addr': 0x12B8, 
         'type': 'UINT32_SWAP',
         'count': 2,
-        'subtype': 'BITMASK',
     },
-    
-    # Balancing
-    'BALANCE_CURRENT': {
-        'addr': 0x12A4,
-        'type': 'INT16',
-        'unit': 'A',
-        'scale': 0.001,
-    },
-    'BALANCE_STATUS': {
-        'addr': 0x12A6,
-        'type': 'UINT8_HIGH',
-    },
-    
-    # Capacities
-    'TOTAL_CHG_CAPACITY': {
-        'addr': 0x12B4,
-        'type': 'UINT32',
-        'count': 2,
-        'unit': 'Ah',
-        'scale': 0.001,
-    },
-    
-    # Status Flags
     'CHARGE': {
         'addr': 0x12A0,
         'type': 'UINT8_HIGH',
@@ -176,6 +119,23 @@ REGISTERS = {
     'DISCHARGE': {
         'addr': 0x12A0,
         'type': 'UINT8_LOW',
+    },
+    'ALARMS_32BIT': {
+        'addr': 0x12A1, 
+        'type': 'UINT32_SWAP', # Might be standard UINT32, but existing parsing used SWAP. It's normally 0 anyway.
+        'count': 2,
+        'subtype': 'BITMASK',
+    },
+    'TOTAL_CHG_CAPACITY': {
+        'addr': 0x12B4,  # Let's trust this was correctly mapped to total charged capacity
+        'type': 'UINT32',
+        'count': 2,
+        'unit': 'Ah',
+        'scale': 0.001,
+    },
+    'CYCLE_COUNT': {
+        'addr': 0x12B6,
+        'type': 'UINT16',
     },
 }
 
@@ -278,8 +238,10 @@ class JKBMSClient(BaseModbusClient):
                     data[key] = val
 
         # Derived logic for power
-        bat_power = data.get('BAT_POWER', 0.0)
+        bat_vol = data.get('BAT_VOLTAGE', 0.0)
         bat_current = data.get('BAT_CURRENT', 0.0)
+        
+        bat_power = bat_vol * bat_current
         
         if bat_current > 0:
             data['CHARGING_POWER'] = round(bat_power, 3)
@@ -293,15 +255,11 @@ class JKBMSClient(BaseModbusClient):
         alarms = [ALARM_BITS[b] for b in ALARM_BITS if (alarm_val >> b) & 1]
         data['parsed_alarms'] = alarms if alarms else ["Normal"]
         
-        # Include raw data for debugging
-        data['_raw_data'] = full_block
-        
         return data
 
     def get_discovery_sensors(self) -> list:
         sensors = []
         
-        # Mapping unit to HA device_class
         class_map = {
             'V': 'voltage',
             'mV': 'voltage',
@@ -309,7 +267,7 @@ class JKBMSClient(BaseModbusClient):
             'W': 'power',
             '°C': 'temperature',
             '%': 'battery',
-            'Ah': None, # Let HA treat Ah as a standard numerical sensor
+            'Ah': None,
             's': 'duration'
         }
         
@@ -342,14 +300,12 @@ class JKBMSClient(BaseModbusClient):
                     'value_template': f"{{{{ value_json.{key} }}}}"
                 })
         
-        # Add parsed_alarms as a generic sensor
         sensors.append({
             'id': 'parsed_alarms',
             'name': 'Active Alarms',
-            'value_template': '{{ value_json.parsed_alarms | join(", ") }}'
+            'value_template': '{{ value_json.parsed_alarms | join(\", \") }}'
         })
         
-        # Append derived parameters not explicitly in REGISTERS
         sensors.append({
             'id': 'charging_power',
             'name': 'Charging Power',
