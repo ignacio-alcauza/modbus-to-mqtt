@@ -58,7 +58,7 @@ REGISTERS = {
     },
     'BAT_CURRENT': {
         'addr': 0x128C,  
-        'type': 'INT32',  # Big-Endian INT32
+        'type': 'INT32',
         'count': 2,
         'unit': 'A',
         'scale': 0.001,
