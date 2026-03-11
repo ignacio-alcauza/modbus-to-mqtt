@@ -22,6 +22,6 @@ deye_inverter:
   modbus_ip: 192.168.1.133
   modbus_port: 502
   modbus_unit: 1
-  query_seconds: 30
+  query_seconds: 10
   debug_values: false
   model: SUN-6K-SG05LP1-EU-AM2-P
