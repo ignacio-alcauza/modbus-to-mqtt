@@ -5,14 +5,61 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Union
 from utils.modbus import BaseModbusClient
 
-# Placeholder for Deye/Huawei registers
-ALL_REGISTER_GROUPS = {}
-DEVICE_STATUS_CODES = {}
+# Full Deye Hybrid Inverter Registers (Read-Only)
+# Word Order: Deye uses Little-Endian for 32-bit registers (Low word first).
+DEYE_HYBRID_REGISTERS = {
+    "Total_Energy": {
+        "base": 60,
+        "count": 40,
+        "registers": [
+            {"name": "DAY_PV_ENERGY", "address": 60, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
+            {"name": "TOTAL_PV_ENERGY", "address": 63, "count": 2, "type": "U32_LE", "gain": 10, "unit": "kWh"},
+            {"name": "DAY_BATTERY_CHARGE", "address": 70, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
+            {"name": "DAY_BATTERY_DISCHARGE", "address": 71, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
+            {"name": "TOTAL_BATTERY_CHARGE", "address": 72, "count": 2, "type": "U32_LE", "gain": 10, "unit": "kWh"},
+            {"name": "TOTAL_BATTERY_DISCHARGE", "address": 74, "count": 2, "type": "U32_LE", "gain": 10, "unit": "kWh"},
+            {"name": "DAY_GRID_BUY", "address": 76, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
+            {"name": "DAY_GRID_SELL", "address": 77, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
+            {"name": "GRID_FREQUENCY", "address": 79, "count": 1, "type": "U16", "gain": 100, "unit": "Hz"},
+        ]
+    },
+    "Live_Data_1": {
+        "base": 100,
+        "count": 55,
+        "registers": [
+            {"name": "RADIATOR_TEMP", "address": 111, "count": 1, "type": "I16", "gain": 100, "unit": "°C"},
+            {"name": "PV1_VOLTAGE", "address": 109, "count": 1, "type": "U16", "gain": 10, "unit": "V"},
+            {"name": "PV1_CURRENT", "address": 110, "count": 1, "type": "U16", "gain": 10, "unit": "A"},
+            {"name": "GRID_L1_VOLTAGE", "address": 150, "count": 1, "type": "U16", "gain": 10, "unit": "V"},
+        ]
+    },
+    "Live_Data_2": {
+        "base": 160,
+        "count": 40,
+        "registers": [
+            {"name": "GRID_L1_POWER", "address": 166, "count": 1, "type": "I16", "unit": "W"},
+            {"name": "GRID_TOTAL_POWER", "address": 169, "count": 1, "type": "I16", "unit": "W"},
+            {"name": "LOAD_L1_POWER", "address": 172, "count": 1, "type": "U16", "unit": "W"},
+            {"name": "LOAD_TOTAL_POWER", "address": 175, "count": 1, "type": "U16", "unit": "W"},
+            {"name": "BATTERY_TEMP", "address": 182, "count": 1, "type": "I16", "gain": 10, "unit": "°C"},
+            {"name": "BATTERY_VOLTAGE", "address": 183, "count": 1, "type": "U16", "gain": 100, "unit": "V"},
+            {"name": "BATTERY_SOC", "address": 184, "count": 1, "type": "U16", "unit": "%"},
+            {"name": "PV1_POWER", "address": 186, "count": 1, "type": "U16", "unit": "W"},
+            {"name": "PV2_POWER", "address": 187, "count": 1, "type": "U16", "unit": "W"},
+            {"name": "BATTERY_POWER", "address": 190, "count": 1, "type": "I16", "unit": "W"},
+            {"name": "BATTERY_CURRENT", "address": 191, "count": 1, "type": "I16", "gain": 100, "unit": "A"},
+        ]
+    }
+}
 
 logger = logging.getLogger("modbus2mqtt.devices.deye")
 
-class HuaweiSUN2000Client(BaseModbusClient):
-    """Client for reading Huawei SUN2000 inverter data via Modbus TCP."""
+class DeyeInverterClient(BaseModbusClient):
+    """Client for reading Deye Hybrid Inverter data via Modbus TCP."""
+
+    def __init__(self, host: str, port: int, unit_id: int = 1, model: str = None):
+        super().__init__(host, port, unit_id)
+        self.model = model
 
     def _decode_value(self, registers: List[int], reg_def: dict) -> Any:
         reg_type = reg_def["type"]
@@ -27,133 +74,126 @@ class HuaweiSUN2000Client(BaseModbusClient):
 
             elif reg_type == "U16":
                 value = registers[0]
-                return value / gain if gain != 1 else value
+                if value == 0xFFFF: return None
+                return round(value / gain, 3) if gain != 1 else value
 
             elif reg_type == "I16":
                 value = registers[0]
+                if value == 0x7FFF: return None
                 if value >= 0x8000:
                     value -= 0x10000
-                return value / gain if gain != 1 else value
+                return round(value / gain, 3) if gain != 1 else value
 
-            elif reg_type == "U32":
-                value = (registers[0] << 16) | registers[1]
-                return value / gain if gain != 1 else value
+            elif reg_type == "U32_LE":
+                # Little Endian Words (Low word first)
+                if len(registers) < 2: return None
+                value = (registers[1] << 16) | registers[0]
+                if value == 0xFFFFFFFF: return None
+                return round(value / gain, 3) if gain != 1 else value
 
             elif reg_type == "I32":
-                value = (registers[0] << 16) | registers[1]
+                if len(registers) < 2: return None
+                value = (registers[1] << 16) | registers[0] # Same LE word order
+                if value == 0x7FFFFFFF: return None
                 if value >= 0x80000000:
                     value -= 0x100000000
-                return value / gain if gain != 1 else value
+                return round(value / gain, 3) if gain != 1 else value
                 
-            elif reg_type == "Bitfield32":
-                value = (registers[0] << 16) | registers[1]
-                bits_map = reg_def.get("bits", {})
-                active_bits = []
-                for bit_pos, description in bits_map.items():
-                    if value & (1 << bit_pos):
-                        active_bits.append(description)
-                return {
-                    "raw": value,
-                    "active": active_bits,
-                }
-                
-            elif reg_type == "BitfieldSOC":
-                value = registers[0]
-                bal_sta = (value >> 8) & 0xFF
-                soc = value & 0xFF
-                return {
-                    "soc": soc,
-                    "balance_status": bal_sta,
-                }
-
-            elif reg_type == "Bitfield16":
-                value = registers[0]
-                bits_map = reg_def.get("bits", {})
-                active_bits = []
-                for bit_pos, description in bits_map.items():
-                    if value & (1 << bit_pos):
-                        active_bits.append(description)
-                return {
-                    "raw": value,
-                    "active": active_bits,
-                }
-
             else:
                 logger.warning("Unknown register type: %s", reg_type)
                 return registers
 
         except Exception as e:
-            logger.error(
-                "Error decoding %s (type=%s): %s",
-                reg_def.get("name", "unknown"),
-                reg_type,
-                e,
-            )
+            logger.error("Error decoding %s: %s", reg_def.get("name", "unknown"), e)
             return None
-
-    def read_block_and_parse(self, base_address: int, count: int, registers_map: List[dict]) -> dict:
-        results = {}
-        logger.debug("Reading block base: 0x%04X, count: %d", base_address, count)
-        block_data = self.read_holding_registers(base_address, count)
-            
-        if not block_data:
-            logger.error("Failed to read block %d", base_address)
-            return results
-
-        for reg_def in registers_map:
-            name = reg_def["name"]
-            offset = reg_def["address"] - base_address
-            reg_count = reg_def["count"]
-
-            if offset < 0 or offset + reg_count > len(block_data):
-                continue
-
-            raw_registers = block_data[offset : offset + reg_count]
-            value = self._decode_value(raw_registers, reg_def)
-            
-            # Format device statuses
-            if name in ["device_status", "inverter_status"] and isinstance(value, int):
-                value = {"code": value, "description": DEVICE_STATUS_CODES.get(value, f"Unknown (0x{value:04X})")}
-            elif "time" in name.lower() and isinstance(value, (int, float)):
-                if value > 0:
-                   try:
-                       dt = datetime.fromtimestamp(int(value), tz=timezone.utc)
-                       value = {"epoch": value, "datetime": dt.strftime("%Y-%m-%d %H:%M:%S UTC")}
-                   except Exception:
-                       pass
-
-            results[name] = {
-                "value": value,
-                "unit": reg_def.get("unit", ""),
-                "description": reg_def.get("description", ""),
-            }
-
-        return results
 
     def get_all_data(self) -> dict:
         all_data = {}
         all_data['_raw_data'] = {}
         
-        # Determine blocks to read based on ALL_REGISTER_GROUPS
-        groups = {
-            "Equipment Info": {"base": 30000, "count": 81},
-            "Power Data": {"base": 32000, "count": 116},
-            "Energy Yield": {"base": 32106, "count": 10},
-        }
+        if not hasattr(self, '_device_sn'):
+            sn_data = self.read_holding_registers(3, 5)
+            if sn_data:
+                self._device_sn = self._decode_value(sn_data, {"type": "STR"})
+            time.sleep(0.35)
 
-        for group_name, registers in ALL_REGISTER_GROUPS.items():
-            if group_name in groups:
-                base = groups[group_name]["base"]
-                count = groups[group_name]["count"]
-                
-                block_data = self.read_holding_registers(base, count)
-                if block_data:
-                    all_data['_raw_data'][group_name] = block_data
-                    
-                all_data[group_name] = self.read_block_and_parse(base, count, registers)
-            else:
-                all_data[group_name] = {}
+        for group_name, group_def in DEYE_HYBRID_REGISTERS.items():
+            base = group_def["base"]
+            total_count = group_def["count"]
+            registers_list = group_def["registers"]
             
-            time.sleep(0.1)
+            full_block_data = []
+            for i in range(0, total_count, 50):
+                chunk_base = base + i
+                chunk_count = min(50, total_count - i)
+                
+                chunk_data = self.read_holding_registers(chunk_base, chunk_count)
+                if chunk_data:
+                    full_block_data.extend(chunk_data)
+                else:
+                    logger.error("Failed to read group %s at %d", group_name, chunk_base)
+                    break
+                
+                time.sleep(0.35) 
+            
+            if not full_block_data:
+                continue
+                
+            all_data['_raw_data'][group_name] = full_block_data
+            
+            for reg_def in registers_list:
+                name = reg_def["name"]
+                offset = reg_def["address"] - base
+                reg_count = reg_def["count"]
+                
+                if 0 <= offset < len(full_block_data) and offset + reg_count <= len(full_block_data):
+                    chunk = full_block_data[offset : offset + reg_count]
+                    val = self._decode_value(chunk, reg_def)
+                    if val is not None:
+                        # Battery temp offset fix (offset 100.0)
+                        if name == "BATTERY_TEMP" and val > 100:
+                            val = round(val - 100.0, 1)
+                        all_data[name] = val
+
+        if hasattr(self, '_device_sn'):
+            all_data['DEVICE_SN'] = self._device_sn
+            
+        if self.model:
+            all_data['MODEL'] = self.model
 
         return all_data
+
+    def get_discovery_sensors(self) -> list:
+        sensors = []
+        class_map = {
+            'V': 'voltage',
+            'A': 'current',
+            'W': 'power',
+            '°C': 'temperature',
+            '%': 'battery',
+            'Hz': 'frequency',
+            'kWh': 'energy'
+        }
+        
+        for group in DEYE_HYBRID_REGISTERS.values():
+            for reg in group["registers"]:
+                name = reg["name"]
+                unit = reg.get("unit")
+                dclass = class_map.get(unit)
+                
+                sensors.append({
+                    'id': name.lower(),
+                    'name': name.replace('_', ' ').title(),
+                    'unit': unit,
+                    'device_class': dclass,
+                    'state_class': 'total_increasing' if unit == 'kWh' else 'measurement',
+                    'value_template': f"{{{{ value_json.{name} }}}}"
+                })
+        
+        sensors.append({
+            'id': 'model',
+            'name': 'Model',
+            'value_template': '{{ value_json.MODEL }}'
+        })
+        
+        return sensors

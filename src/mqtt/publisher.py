@@ -74,6 +74,7 @@ class MQTTPublisher:
                 safe_device_id = device_id.replace("/", "_")
                 discovery_topic = f"{discovery_prefix}/sensor/{safe_device_id}/{sensor['id']}/config"
             
+            logger.info(f"Publishing discovery to: {discovery_topic}")
             payload = {
                 "name": sensor['name'],
                 "unique_id": f"{device_id}_{sensor['id']}".replace("/", "_"),
@@ -82,18 +83,23 @@ class MQTTPublisher:
                 "device": device_info
             }
             
-            if sensor.get('unit'):
-                payload["unit_of_measurement"] = sensor['unit']
-            if sensor.get('device_class'):
-                payload["device_class"] = sensor['device_class']
-                if sensor['device_class'] == "energy_storage":
-                    payload["device_class"] = "energy" # Fallback if energy_storage isn't perfectly supported
-                    payload["state_class"] = "total_increasing"
-                elif sensor['device_class'] in ["voltage", "current", "power", "temperature", "battery"]:
+            # Pass through all relevant sensor fields from definition
+            for key in ["unit_of_measurement", "device_class", "state_class", "icon", "expire_after", "force_update"]:
+                if key in sensor:
+                    payload[key] = sensor[key]
+                elif key == "unit_of_measurement" and "unit" in sensor:
+                    payload[key] = sensor["unit"]
+            
+            # Smart defaults based on device_class if state_class is still missing
+            if "state_class" not in payload and "device_class" in payload:
+                if payload["device_class"] in ["voltage", "current", "power", "temperature", "battery"]:
                     payload["state_class"] = "measurement"
-                
+                elif payload["device_class"] == "energy":
+                    payload["state_class"] = "total_increasing"
+
             try:
-                self.client.publish(discovery_topic, json.dumps(payload), retain=True, qos=1)
-                logger.debug(f"Published discovery to {discovery_topic}")
+                json_payload = json.dumps(payload)
+                logger.info(f"Discovery Config -> {discovery_topic}: {json_payload}")
+                self.client.publish(discovery_topic, json_payload, retain=True, qos=1)
             except Exception as e:
                 logger.error(f"Failed to publish discovery for {sensor['id']}: {e}")

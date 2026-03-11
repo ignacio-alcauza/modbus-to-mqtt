@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 from utils.logger import configure_logging
 from devices.jkbms import JKBMSClient
-from devices.deye import HuaweiSUN2000Client
+from devices.deye import DeyeInverterClient
 from mqtt.publisher import MQTTPublisher
 
 logger = configure_logging(logging.INFO)
@@ -106,10 +106,11 @@ def main():
 
     deye_conf = config.get("deye_inverter", {})
     if deye_conf.get("active", False):
-        deye = HuaweiSUN2000Client(
+        deye = DeyeInverterClient(
             host=deye_conf.get("modbus_ip"),
             port=deye_conf.get("modbus_port", 502),
-            unit_id=deye_conf.get("modbus_unit", 1)
+            unit_id=deye_conf.get("modbus_unit", 1),
+            model=deye_conf.get("model")
         )
         
         # Build topic dynamically with /state
