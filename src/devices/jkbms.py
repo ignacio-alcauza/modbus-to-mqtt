@@ -75,6 +75,24 @@ REGISTERS = {
         'unit': '°C',
         'scale': 0.1,
     },
+    'TEMP_T3': {
+        'addr': 0x12BC,
+        'type': 'INT16',
+        'unit': '°C',
+        'scale': 0.1,
+    },
+    'TEMP_T4': {
+        'addr': 0x12BD,
+        'type': 'INT16',
+        'unit': '°C',
+        'scale': 0.1,
+    },
+    'TEMP_T5': {
+        'addr': 0x12BE,
+        'type': 'INT16',
+        'unit': '°C',
+        'scale': 0.1,
+    },
     
     # SOC and BalanStatus are packed into 0x1293
     'SOC_PERCENT': {
