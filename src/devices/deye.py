@@ -10,16 +10,19 @@ from utils.modbus import BaseModbusClient
 DEYE_HYBRID_REGISTERS = {
     "Total_Energy": {
         "base": 60,
-        "count": 40,
+        "count": 45,
         "registers": [
             {"name": "DAY_PV_ENERGY", "address": 60, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
-            {"name": "TOTAL_PV_ENERGY", "address": 63, "count": 2, "type": "U32_LE", "gain": 10, "unit": "kWh"},
+            {"name": "TOTAL_PV_ENERGY", "address": 98, "count": 2, "type": "U32_LE", "gain": 10, "unit": "kWh"},
             {"name": "DAY_BATTERY_CHARGE", "address": 70, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
             {"name": "DAY_BATTERY_DISCHARGE", "address": 71, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
             {"name": "TOTAL_BATTERY_CHARGE", "address": 72, "count": 2, "type": "U32_LE", "gain": 10, "unit": "kWh"},
             {"name": "TOTAL_BATTERY_DISCHARGE", "address": 74, "count": 2, "type": "U32_LE", "gain": 10, "unit": "kWh"},
             {"name": "DAY_GRID_BUY", "address": 76, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
             {"name": "DAY_GRID_SELL", "address": 77, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
+            {"name": "TOTAL_GRID_BUY", "address": 78, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
+            {"name": "TOTAL_GRID_SELL", "address": 80, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
+            {"name": "TOTAL_LOAD_ENERGY", "address": 96, "count": 2, "type": "U32_LE", "gain": 10, "unit": "kWh"},
             {"name": "GRID_FREQUENCY", "address": 79, "count": 1, "type": "U16", "gain": 100, "unit": "Hz"},
         ]
     },
