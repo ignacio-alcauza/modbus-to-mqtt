@@ -5,28 +5,25 @@ from utils.modbus import BaseModbusClient
 logger = logging.getLogger("modbus2mqtt.devices.jkbms")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# JK-PB2A16S20P  Modbus TCP Register Map
-# Verified live via exhaustive probe against firmware v27 / hw v19.
-# All addresses are Modbus holding-register WORD addresses.
-#
-# We read 4 x 64-register blocks:
-#   0x1200–0x123F  cell voltages, cell stats
-#   0x1240–0x127F  cell status bitmask, avg/diff/max-min cells
-#   0x1280–0x12BF  temperatures, pack V/I, SOC, capacity, cycles
-#   0x12C0–0x12FF  charge/discharge byte flags, extra data
-#
-# NOTE: The official JK BMS Modbus doc (V1.1) uses byte-offset addressing
-# that does NOT map 1:1 to Modbus register addresses via the Elfin EW11A.
-# All addresses below are ACTUAL register addresses confirmed live.
+# JK BMS JK-PB2A16S20P (Firmware v27) Register Map
 # ─────────────────────────────────────────────────────────────────────────────
 
 REGISTERS = {
     # ── Cell Voltages (×16) ───────────────────────────────────────────────────
     'CELL_VOLTAGES': {
-        'addr': 0x1200,
+        'addr': 0x1203,
         'count': 16,
         'type': 'UINT16',
         'unit': 'V',
+        'scale': 0.001,
+    },
+
+    # ── Cell Resistances (×16) ────────────────────────────────────────────────
+    'CELL_RESISTANCES': {
+        'addr': 0x1247,
+        'count': 16,
+        'type': 'UINT16',
+        'unit': 'mΩ',
         'scale': 0.001,
     },
 
@@ -43,23 +40,6 @@ REGISTERS = {
         'unit': 'V',
         'scale': 0.001,
     },
-    'CELL_MAX_NO': {
-        'addr': 0x1224,
-        'type': 'UINT8_HIGH',
-    },
-    'CELL_MIN_NO': {
-        'addr': 0x1224,
-        'type': 'UINT8_LOW',
-    },
-
-    # ── Cell Resistances (×16) ────────────────────────────────────────────────
-    'CELL_RESISTANCES': {
-        'addr': 0x1225,
-        'count': 16,
-        'type': 'UINT16',
-        'unit': 'mΩ',
-        'scale': 0.001,
-    },
 
     # ── Temperatures ──────────────────────────────────────────────────────────
     'TEMP_MOS': {
@@ -69,31 +49,25 @@ REGISTERS = {
         'scale': 0.1,
     },
     'TEMP_T1': {
-        'addr': 0x128E,
+        'addr': 0x1296,
         'type': 'INT16',
         'unit': '°C',
         'scale': 0.1,
     },
     'TEMP_T2': {
-        'addr': 0x128F,
-        'type': 'INT16',
-        'unit': '°C',
-        'scale': 0.1,
-    },
-    'TEMP_T3': {
-        'addr': 0x12BC,
+        'addr': 0x1297,
         'type': 'INT16',
         'unit': '°C',
         'scale': 0.1,
     },
     'TEMP_T4': {
-        'addr': 0x12BD,
+        'addr': 0x12f5,
         'type': 'INT16',
         'unit': '°C',
         'scale': 0.1,
     },
     'TEMP_T5': {
-        'addr': 0x12BE,
+        'addr': 0x12f6,
         'type': 'INT16',
         'unit': '°C',
         'scale': 0.1,
@@ -101,13 +75,13 @@ REGISTERS = {
 
     # ── Pack Voltage & Current ────────────────────────────────────────────────
     'BAT_VOLTAGE': {
-        'addr': 0x1289,
+        'addr': 0x1291,
         'type': 'UINT16',
         'unit': 'V',
         'scale': 0.001,
     },
     'BAT_CURRENT': {
-        'addr': 0x128C,
+        'addr': 0x1294,
         'type': 'INT32',
         'count': 2,
         'unit': 'A',
@@ -116,25 +90,21 @@ REGISTERS = {
 
     # ── SOC & Balance ─────────────────────────────────────────────────────────
     'SOC_PERCENT': {
-        'addr': 0x1293,
-        'type': 'UINT8_LOW',
+        'addr': 0x12a3,
+        'type': 'UINT16',
         'unit': '%',
-    },
-    'BALANCE_STATUS': {
-        'addr': 0x1293,
-        'type': 'UINT8_HIGH',
     },
 
     # ── Capacity ──────────────────────────────────────────────────────────────
     'SOC_CAP_REMAIN': {
-        'addr': 0x1294,
+        'addr': 0x12a4, # Probable, based on 0x12a6 shift
         'type': 'UINT32',
         'count': 2,
         'unit': 'Ah',
         'scale': 0.001,
     },
     'SOC_FULL_CAP': {
-        'addr': 0x1296,
+        'addr': 0x12a6,
         'type': 'UINT32',
         'count': 2,
         'unit': 'Ah',
@@ -143,59 +113,31 @@ REGISTERS = {
 
     # ── Uptime ────────────────────────────────────────────────────────────────
     'UPTIME': {
-        'addr': 0x129E,
+        'addr': 0x12ae,
         'type': 'UINT32',
         'count': 2,
-    },
-
-    # ── Charge / Discharge MOS State ──────────────────────────────────────────
-    'CHARGE': {
-        'addr': 0x129C,
-        'type': 'UINT32_SWAP',
-        'count': 2,
-        'subtype': 'BIT_14',
-    },
-    'DISCHARGE': {
-        'addr': 0x129C,
-        'type': 'UINT32_SWAP',
-        'count': 2,
-        'subtype': 'BIT_13',
-    },
-
-    # ── Alarms ────────────────────────────────────────────────────────────────
-    'ALARMS_32BIT': {
-        'addr': 0x12A1,
-        'type': 'UINT32_SWAP',
-        'count': 2,
-        'subtype': 'BITMASK',
-    },
-
-    # ── Balancing ─────────────────────────────────────────────────────────────
-    'BALANCING_CURRENT': {
-        'addr': 0x12A4,
-        'type': 'INT16',
-        'unit': 'A',
-        'scale': 0.001,
-    },
-    'BALANCE_TRIGGER_VOLTAGE': {
-        'addr': 0x12AE,
-        'type': 'FLOAT32',
-        'count': 2,
-        'unit': 'V',
     },
 
     # ── Cycle Statistics ──────────────────────────────────────────────────────
     'CYCLE_COUNT': {
-        'addr': 0x1298,
+        'addr': 0x12a8, # Just before capacity
         'type': 'UINT32',
         'count': 2,
     },
     'TOTAL_CHG_CAPACITY': {
-        'addr': 0x129A,
+        'addr': 0x12aa,
         'type': 'UINT32',
         'count': 2,
         'unit': 'Ah',
         'scale': 0.001,
+    },
+
+    # ── Settings ──────────────────────────────────────────────────────────────
+    'BALANCE_TRIGGER_VOLTAGE': {
+        'addr': 0x12be,
+        'type': 'FLOAT32',
+        'count': 2,
+        'unit': 'V',
     },
 }
 
@@ -262,15 +204,7 @@ class JKBMSClient(BaseModbusClient):
         minutes, sec = divmod(int(seconds), 60)
         hours, minutes = divmod(minutes, 60)
         days, hours = divmod(hours, 24)
-        years, days = divmod(days, 365)
-        months, days = divmod(days, 30)
-
-        if years > 0:
-            m_str = f", {months} mes{'es' if months != 1 else ''}" if months > 0 else ""
-            return f"{years} año{'s' if years > 1 else ''}{m_str}"
-        if months > 0:
-            d_str = f", {days} día{'s' if days != 1 else ''}" if days > 0 else ""
-            return f"{months} mes{'es' if months != 1 else ''}{d_str}"
+        
         if days > 0:
             h_str = f", {hours}h" if hours > 0 else ""
             return f"{days} día{'s' if days != 1 else ''}{h_str}"
@@ -284,20 +218,28 @@ class JKBMSClient(BaseModbusClient):
     def get_all_data(self) -> dict:
         data = {}
 
-        # Leer en fragmentos de 32 registros para evitar truncamientos del Elfin/JK.
-        # Capturamos desde 0x1200 hasta 0x12BF (192 registros en total).
-        full_block = []
-        for start in range(0x1200, 0x12C0, 32):
-            chunk = self.read_holding_registers(start, 32)
-            full_block.extend(chunk or [0] * 32)
+        # Lectura por bloques de 16 para máxima estabilidad en FW v27
+        full_block = {}
+        # Escaneamos los rangos de interés: 0x1200-0x12CF y 0x12F0-0x12FF
+        for start in list(range(0x1200, 0x12D0, 16)) + [0x12F0]:
+            chunk = self.read_holding_registers(start, 16)
+            if chunk:
+                for i, v in enumerate(chunk):
+                    full_block[start + i] = v
 
         for key, reg in REGISTERS.items():
             addr = reg['addr']
             count = reg.get('count', 1)
-            offset = addr - 0x1200
-
-            if 0 <= offset and offset + count <= len(full_block):
-                chunk = full_block[offset: offset + count]
+            
+            # Recopilamos el chunk de memoria
+            chunk = []
+            for a in range(addr, addr + count):
+                if a in full_block:
+                    chunk.append(full_block[a])
+                else:
+                    break
+            
+            if len(chunk) == count:
                 if key in ['CELL_VOLTAGES', 'CELL_RESISTANCES']:
                     data[key] = [round(v * reg.get('scale', 1.0), 3) for v in chunk]
                 else:
@@ -305,14 +247,6 @@ class JKBMSClient(BaseModbusClient):
                     if val is not None:
                         if key == 'UPTIME':
                             val = self._format_uptime(val)
-                        elif reg.get('subtype') == 'BIT_14':
-                            val = "ON" if (int(val) & (1 << 14)) else "OFF"
-                        elif reg.get('subtype') == 'BIT_13':
-                            val = "ON" if (int(val) & (1 << 13)) else "OFF"
-                        elif key == 'BALANCE_STATUS':
-                            if val == 1: val = "Charging"
-                            elif val == 2: val = "Discharging"
-                            else: val = "Off"
                     data[key] = val
 
         # Derived: charging / discharging power (W)
@@ -327,11 +261,6 @@ class JKBMSClient(BaseModbusClient):
             data['CHARGING_POWER'] = 0.0
             data['DISCHARGING_POWER'] = round(abs(bat_power), 0)
 
-        # Alarm parsing
-        alarm_val = int(data.get('ALARMS_32BIT', 0))
-        alarms = [ALARM_BITS[b] for b in ALARM_BITS if (alarm_val >> b) & 1]
-        data['parsed_alarms'] = alarms if alarms else ["Normal"]
-
         return data
 
     def get_discovery_sensors(self) -> list:
@@ -339,7 +268,7 @@ class JKBMSClient(BaseModbusClient):
 
         class_map = {
             'V': 'voltage',
-            'mV': 'voltage',
+            'mΩ': None, # Resistance unit
             'A': 'current',
             'W': 'power',
             '°C': 'temperature',
@@ -374,12 +303,7 @@ class JKBMSClient(BaseModbusClient):
                     'value_template': f"{{{{ value_json.{key} }}}}",
                 })
 
-        # Derived / computed sensors (not in REGISTERS)
-        sensors.append({
-            'id': 'parsed_alarms',
-            'name': 'Active Alarms',
-            'value_template': '{{ value_json.parsed_alarms | join(", ") }}'
-        })
+        # Derived / computed sensors
         sensors.append({
             'id': 'charging_power',
             'name': 'Charging Power',
