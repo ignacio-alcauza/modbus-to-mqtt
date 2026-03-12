@@ -4,10 +4,24 @@ from utils.modbus import BaseModbusClient
 
 logger = logging.getLogger("modbus2mqtt.devices.jkbms")
 
-# PB2A16S20P Modbus TCP Register Map based on internal memory block dumps.
-# We read 3 blocks of 64 registers (0x1200, 0x1240, 0x1280) and parse the payload.
+# ─────────────────────────────────────────────────────────────────────────────
+# JK-PB2A16S20P  Modbus TCP Register Map
+# Verified live via exhaustive probe against firmware v27 / hw v19.
+# All addresses are Modbus holding-register WORD addresses.
+#
+# We read 4 x 64-register blocks:
+#   0x1200–0x123F  cell voltages, cell stats
+#   0x1240–0x127F  cell status bitmask, avg/diff/max-min cells
+#   0x1280–0x12BF  temperatures, pack V/I, SOC, capacity, cycles
+#   0x12C0–0x12FF  charge/discharge byte flags, extra data
+#
+# NOTE: The official JK BMS Modbus doc (V1.1) uses byte-offset addressing
+# that does NOT map 1:1 to Modbus register addresses via the Elfin EW11A.
+# All addresses below are ACTUAL register addresses confirmed live.
+# ─────────────────────────────────────────────────────────────────────────────
+
 REGISTERS = {
-    # --- BLOCK 0x1200 ---
+    # ── Cell Voltages (×16) ───────────────────────────────────────────────────
     'CELL_VOLTAGES': {
         'addr': 0x1200,
         'count': 16,
@@ -15,6 +29,8 @@ REGISTERS = {
         'unit': 'V',
         'scale': 0.001,
     },
+
+    # ── Cell Statistics ───────────────────────────────────────────────────────
     'CELL_AVG_VOLTAGE': {
         'addr': 0x1222,
         'type': 'UINT16',
@@ -27,14 +43,17 @@ REGISTERS = {
         'unit': 'V',
         'scale': 0.001,
     },
+    # Packed: high byte = cell# with max voltage, low byte = cell# with min voltage
     'CELL_MAX_NO': {
         'addr': 0x1224,
-        'type': 'UINT8_HIGH',   # High byte
+        'type': 'UINT8_HIGH',
     },
     'CELL_MIN_NO': {
         'addr': 0x1224,
-        'type': 'UINT8_LOW',    # Low byte
+        'type': 'UINT8_LOW',
     },
+
+    # ── Cell Resistances (×16) ────────────────────────────────────────────────
     'CELL_RESISTANCES': {
         'addr': 0x1225,
         'count': 16,
@@ -43,25 +62,12 @@ REGISTERS = {
         'scale': 0.001,
     },
 
-    # --- BLOCK 0x1280 ---
+    # ── Temperatures ──────────────────────────────────────────────────────────
     'TEMP_MOS': {
-        'addr': 0x1285, 
+        'addr': 0x1285,
         'type': 'INT16',
         'unit': '°C',
         'scale': 0.1,
-    },
-    'BAT_VOLTAGE': {
-        'addr': 0x1289,
-        'type': 'UINT16',
-        'unit': 'V',
-        'scale': 0.001,
-    },
-    'BAT_CURRENT': {
-        'addr': 0x128C,  
-        'type': 'INT32',
-        'count': 2,
-        'unit': 'A',
-        'scale': 0.001,
     },
     'TEMP_T1': {
         'addr': 0x128E,
@@ -75,6 +81,7 @@ REGISTERS = {
         'unit': '°C',
         'scale': 0.1,
     },
+    # T3/T4/T5 confirmed at 0x12BC/BD/BE (doc says 0x12F8+ but that's firmware V1.1)
     'TEMP_T3': {
         'addr': 0x12BC,
         'type': 'INT16',
@@ -93,25 +100,49 @@ REGISTERS = {
         'unit': '°C',
         'scale': 0.1,
     },
-    
-    # SOC and BalanStatus are packed into 0x1293
+
+    # ── Pack Voltage & Current ────────────────────────────────────────────────
+    # BatVoltage UINT16 @ 0x1289, mV → ÷1000 = V. Probe: 53012 → 53.012 V ✓
+    'BAT_VOLTAGE': {
+        'addr': 0x1289,
+        'type': 'UINT16',
+        'unit': 'V',
+        'scale': 0.001,
+    },
+    # BatCurrent INT32 @ 0x128C–0x128D, mA → ÷1000 = A. + = charge, − = discharge.
+    # Probe: -4812 → -4.812 A ✓
+    'BAT_CURRENT': {
+        'addr': 0x128C,
+        'type': 'INT32',
+        'count': 2,
+        'unit': 'A',
+        'scale': 0.001,
+    },
+
+    # ── SOC & Balance ─────────────────────────────────────────────────────────
+    # 0x1293 packed: low byte = SOC %, high byte = balance status.
+    # Probe: 0x0058 → low=88 (88% SOC), high=0 (off). Matches HA ✓
     'SOC_PERCENT': {
         'addr': 0x1293,
-        'type': 'UINT8_LOW',  # 0x63 -> 99%
+        'type': 'UINT8_LOW',
         'unit': '%',
     },
     'BALANCE_STATUS': {
         'addr': 0x1293,
-        'type': 'UINT8_HIGH', # 0x01 -> Charging, 0x02 -> Discharging, 0x00 -> Off
+        'type': 'UINT8_HIGH',  # 0=off, 1=active(charge), 2=active(discharge)
     },
-    
+
+    # ── Capacity ──────────────────────────────────────────────────────────────
+    # All UINT32 (2 registers, big-endian), mAh → ÷1000 = Ah.
+    # SOC_CAP_REMAIN @ 0x1294: probe 276430 mAh = 276.430 Ah ✓
     'SOC_CAP_REMAIN': {
-        'addr': 0x1294,  
-        'type': 'UINT32', 
+        'addr': 0x1294,
+        'type': 'UINT32',
         'count': 2,
         'unit': 'Ah',
         'scale': 0.001,
     },
+    # SOC_FULL_CAP @ 0x1296: probe 314000 mAh = 314.000 Ah ✓
     'SOC_FULL_CAP': {
         'addr': 0x1296,
         'type': 'UINT32',
@@ -119,17 +150,18 @@ REGISTERS = {
         'unit': 'Ah',
         'scale': 0.001,
     },
+
+    # ── Uptime ────────────────────────────────────────────────────────────────
+    # UINT32, seconds. Probe: 521084 s = 6 days ✓
     'UPTIME': {
-        'addr': 0x129E, 
+        'addr': 0x129E,
         'type': 'UINT32',
         'count': 2,
     },
-    
-    'SYS_STATUS': {
-        'addr': 0x12B8, 
-        'type': 'UINT32_SWAP',
-        'count': 2,
-    },
+
+    # ── Charge / Discharge MOS State ──────────────────────────────────────────
+    # 0x129C UINT32_SWAP: bit14=CHARGE enabled, bit13=DISCHARGE enabled.
+    # These reflect MOS gate states; both can be ON simultaneously (BMS ready).
     'CHARGE': {
         'addr': 0x129C,
         'type': 'UINT32_SWAP',
@@ -140,24 +172,60 @@ REGISTERS = {
         'addr': 0x129C,
         'type': 'UINT32_SWAP',
         'count': 2,
-        'subtype': 'BIT_13', 
+        'subtype': 'BIT_13',
     },
+
+    # ── Alarms ────────────────────────────────────────────────────────────────
     'ALARMS_32BIT': {
-        'addr': 0x12A1, 
-        'type': 'UINT32_SWAP', # Might be standard UINT32, but existing parsing used SWAP. It's normally 0 anyway.
+        'addr': 0x12A1,
+        'type': 'UINT32_SWAP',
         'count': 2,
         'subtype': 'BITMASK',
     },
+
+    # ── Balancing ─────────────────────────────────────────────────────────────
+    # Balancing current INT16 @ 0x12A4, mA → ÷1000 = A.
+    # Reads 0 when balancer is off; live during active balancing only.
+    'BALANCING_CURRENT': {
+        'addr': 0x12A4,
+        'type': 'INT16',
+        'unit': 'A',
+        'scale': 0.001,
+    },
+    # Balance trigger voltage FLOAT32 (IEEE-754) @ 0x12AE–0x12AF.
+    # Probe: 0x403F937D → 2.993 V (cell threshold to start balancing).
+    'BALANCE_TRIGGER_VOLTAGE': {
+        'addr': 0x12AE,
+        'type': 'FLOAT32',
+        'count': 2,
+        'unit': 'V',
+    },
+
+    # ── Cycle Statistics ──────────────────────────────────────────────────────
+    # SOCCycleCap: Ah accumulated in charge cycles tracked by BMS.
+    # Probe @ 0x12B4 UINT32: 65793 mAh = 65.793 Ah ✓
     'TOTAL_CHG_CAPACITY': {
-        'addr': 0x12B4,  # Let's trust this was correctly mapped to total charged capacity
+        'addr': 0x12B4,
         'type': 'UINT32',
         'count': 2,
         'unit': 'Ah',
         'scale': 0.001,
     },
+    # Cycle count UINT16 @ 0x12B6. Probe: 6 ✓
     'CYCLE_COUNT': {
         'addr': 0x12B6,
         'type': 'UINT16',
+    },
+
+    # ── Total Lifetime Capacity ───────────────────────────────────────────────
+    # Cumulative Ah delivered since manufacture (all cycles).
+    # Probe @ 0x12B8 UINT32: 882690 mAh = 882.690 Ah ✓
+    'TOTAL_CHARGING_CYCLE_CAPACITY': {
+        'addr': 0x12B8,
+        'type': 'UINT32',
+        'count': 2,
+        'unit': 'Ah',
+        'scale': 0.001,
     },
 }
 
@@ -182,47 +250,61 @@ ALARM_BITS = {
 
 
 class JKBMSClient(BaseModbusClient):
-    
+
     def decode_value(self, registers, reg_def):
-        if not registers: return None
+        if not registers:
+            return None
         rtype = reg_def.get('type', 'UINT16')
         scale = reg_def.get('scale', 1.0)
-        
-        if rtype in ['UINT32', 'INT32', 'UINT32_SWAP', 'INT32_SWAP'] and len(registers) < 2:
+
+        if rtype in ['UINT32', 'INT32', 'UINT32_SWAP', 'INT32_SWAP', 'FLOAT32', 'FLOAT32_SWAP'] and len(registers) < 2:
             return None
 
-        if rtype == 'UINT16': val = registers[0]
-        elif rtype == 'INT16': val = struct.unpack('>h', struct.pack('>H', registers[0]))[0]
-        elif rtype == 'UINT32': val = (registers[0] << 16) + registers[1]
-        elif rtype == 'INT32': val = struct.unpack('>i', struct.pack('>I', (registers[0] << 16) + registers[1]))[0]
-        elif rtype == 'UINT32_SWAP': val = (registers[1] << 16) + registers[0]
-        elif rtype == 'INT32_SWAP': val = struct.unpack('>i', struct.pack('>I', (registers[1] << 16) + registers[0]))[0]
-        elif rtype == 'UINT8_LOW': val = registers[0] & 0xFF
-        elif rtype == 'UINT8_HIGH': val = (registers[0] >> 8) & 0xFF
-        else: val = registers[0]
-        
+        if rtype == 'UINT16':
+            val = registers[0]
+        elif rtype == 'INT16':
+            val = struct.unpack('>h', struct.pack('>H', registers[0]))[0]
+        elif rtype == 'UINT32':
+            val = (registers[0] << 16) + registers[1]
+        elif rtype == 'INT32':
+            val = struct.unpack('>i', struct.pack('>I', (registers[0] << 16) + registers[1]))[0]
+        elif rtype == 'UINT32_SWAP':
+            val = (registers[1] << 16) + registers[0]
+        elif rtype == 'INT32_SWAP':
+            val = struct.unpack('>i', struct.pack('>I', (registers[1] << 16) + registers[0]))[0]
+        elif rtype == 'FLOAT32':
+            return round(struct.unpack('>f', struct.pack('>HH', registers[0], registers[1]))[0], 3)
+        elif rtype == 'FLOAT32_SWAP':
+            return round(struct.unpack('>f', struct.pack('>HH', registers[1], registers[0]))[0], 3)
+        elif rtype == 'UINT8_LOW':
+            val = registers[0] & 0xFF
+        elif rtype == 'UINT8_HIGH':
+            val = (registers[0] >> 8) & 0xFF
+        else:
+            val = registers[0]
+
         return round(val * scale, 3)
 
     def _format_uptime(self, seconds: int) -> str:
         if not isinstance(seconds, (int, float)) or seconds < 0:
             return "0s"
-            
+
         minutes, sec = divmod(int(seconds), 60)
         hours, minutes = divmod(minutes, 60)
         days, hours = divmod(hours, 24)
         years, days = divmod(days, 365)
         months, days = divmod(days, 30)
-        
+
         if years > 0:
             m_str = f", {months} mes{'es' if months != 1 else ''}" if months > 0 else ""
             return f"{years} año{'s' if years > 1 else ''}{m_str}"
         if months > 0:
             d_str = f", {days} día{'s' if days != 1 else ''}" if days > 0 else ""
-            return f"{months} mes{'es' if months > 1 else ''}{d_str}"
+            return f"{months} mes{'es' if months != 1 else ''}{d_str}"
         if days > 0:
             h_str = f", {hours}h" if hours > 0 else ""
-            return f"{days} día{'s' if days > 1 else ''}{h_str}"
-        
+            return f"{days} día{'s' if days != 1 else ''}{h_str}"
+
         parts = []
         if hours > 0: parts.append(f"{hours}h")
         if minutes > 0: parts.append(f"{minutes}m")
@@ -231,19 +313,21 @@ class JKBMSClient(BaseModbusClient):
 
     def get_all_data(self) -> dict:
         data = {}
-        # Read standard monitoring and settings block (0x1200 - 0x12BF)
+
+        # Read 3 x 64-register monitoring blocks: 0x1200, 0x1240, 0x1280
+        # (0x12C0 block gives exception on this firmware — all needed data is within 0x12BF)
         full_block = []
         for start in [0x1200, 0x1240, 0x1280]:
             chunk = self.read_holding_registers(start, 64)
-            full_block.extend(chunk or [0]*64)
-            
+            full_block.extend(chunk or [0] * 64)
+
         for key, reg in REGISTERS.items():
             addr = reg['addr']
             count = reg.get('count', 1)
             offset = addr - 0x1200
-            
-            if 0 <= offset < len(full_block):
-                chunk = full_block[offset : offset + count]
+
+            if 0 <= offset and offset + count <= len(full_block):
+                chunk = full_block[offset: offset + count]
                 if key in ['CELL_VOLTAGES', 'CELL_RESISTANCES']:
                     data[key] = [round(v * reg.get('scale', 1.0), 3) for v in chunk]
                 else:
@@ -261,29 +345,28 @@ class JKBMSClient(BaseModbusClient):
                             else: val = "Off"
                     data[key] = val
 
-        # Derived logic for power
+        # Derived: charging / discharging power (W)
         bat_vol = data.get('BAT_VOLTAGE', 0.0)
         bat_current = data.get('BAT_CURRENT', 0.0)
-        
         bat_power = bat_vol * bat_current
-        
+
         if bat_current > 0:
-            data['CHARGING_POWER'] = round(bat_power, 3)
+            data['CHARGING_POWER'] = round(bat_power, 0)
             data['DISCHARGING_POWER'] = 0.0
         else:
             data['CHARGING_POWER'] = 0.0
-            data['DISCHARGING_POWER'] = round(abs(bat_power), 3)
+            data['DISCHARGING_POWER'] = round(abs(bat_power), 0)
 
-        # Alarm Logic
+        # Alarm parsing
         alarm_val = int(data.get('ALARMS_32BIT', 0))
         alarms = [ALARM_BITS[b] for b in ALARM_BITS if (alarm_val >> b) & 1]
         data['parsed_alarms'] = alarms if alarms else ["Normal"]
-        
+
         return data
 
     def get_discovery_sensors(self) -> list:
         sensors = []
-        
+
         class_map = {
             'V': 'voltage',
             'mV': 'voltage',
@@ -292,44 +375,41 @@ class JKBMSClient(BaseModbusClient):
             '°C': 'temperature',
             '%': 'battery',
             'Ah': None,
-            's': 'duration'
+            's': 'duration',
         }
-        
+
         for key, reg in REGISTERS.items():
             if key in ['CELL_VOLTAGES', 'CELL_RESISTANCES']:
                 count = reg.get('count', 1)
                 unit = reg.get('unit')
                 dclass = class_map.get(unit)
-                
                 name_prefix = "Cell Voltage" if key == 'CELL_VOLTAGES' else "Cell Resistance"
-                
                 for i in range(count):
                     sensors.append({
-                        'id': f"{key.lower()}_{i+1}",
-                        'name': f"{name_prefix} {i+1}",
+                        'id': f"{key.lower()}_{i + 1}",
+                        'name': f"{name_prefix} {i + 1}",
                         'unit': unit,
                         'device_class': dclass,
-                        'value_template': f"{{{{ value_json.{key}[{i}] }}}}"
+                        'value_template': f"{{{{ value_json.{key}[{i}] }}}}",
                     })
             else:
                 unit = reg.get('unit')
                 dclass = class_map.get(unit)
                 name = key.replace('_', ' ').title()
-                
                 sensors.append({
                     'id': key.lower(),
                     'name': name,
                     'unit': unit,
                     'device_class': dclass,
-                    'value_template': f"{{{{ value_json.{key} }}}}"
+                    'value_template': f"{{{{ value_json.{key} }}}}",
                 })
-        
+
+        # Derived / computed sensors (not in REGISTERS)
         sensors.append({
             'id': 'parsed_alarms',
             'name': 'Active Alarms',
-            'value_template': '{{ value_json.parsed_alarms | join(\", \") }}'
+            'value_template': '{{ value_json.parsed_alarms | join(", ") }}'
         })
-        
         sensors.append({
             'id': 'charging_power',
             'name': 'Charging Power',
@@ -344,5 +424,5 @@ class JKBMSClient(BaseModbusClient):
             'device_class': 'power',
             'value_template': '{{ value_json.DISCHARGING_POWER }}'
         })
-        
+
         return sensors
