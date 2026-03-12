@@ -202,26 +202,17 @@ REGISTERS = {
     },
 
     # ── Cycle Statistics ──────────────────────────────────────────────────────
-    # SOCCycleCap: Ah accumulated in charge cycles tracked by BMS.
-    # Probe @ 0x12B4 UINT32: 65793 mAh = 65.793 Ah ✓
-    'TOTAL_CHG_CAPACITY': {
-        'addr': 0x12B4,
+    # SOCCycleCount: number of completed charge cycles.
+    # Probe @ 0x1298 UINT32: 0 ✓ (app shows 0)
+    'CYCLE_COUNT': {
+        'addr': 0x1298,
         'type': 'UINT32',
         'count': 2,
-        'unit': 'Ah',
-        'scale': 0.001,
     },
-    # Cycle count UINT16 @ 0x12B6. Probe: 6 ✓
-    'CYCLE_COUNT': {
-        'addr': 0x12B6,
-        'type': 'UINT16',
-    },
-
-    # ── Total Lifetime Capacity ───────────────────────────────────────────────
-    # Cumulative Ah delivered since manufacture (all cycles).
-    # Probe @ 0x12B8 UINT32: 882690 mAh = 882.690 Ah ✓
-    'TOTAL_CHARGING_CYCLE_CAPACITY': {
-        'addr': 0x12B8,
+    # SOCCycleCap: Ah accumulated across all charge cycles.
+    # Probe @ 0x129A UINT32: 88252 mAh = 88.252 Ah ✓ (app shows ~84.8 Ah, delta = time)
+    'TOTAL_CHG_CAPACITY': {
+        'addr': 0x129A,
         'type': 'UINT32',
         'count': 2,
         'unit': 'Ah',
