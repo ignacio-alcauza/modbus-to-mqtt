@@ -43,7 +43,6 @@ REGISTERS = {
         'unit': 'V',
         'scale': 0.001,
     },
-    # Packed: high byte = cell# with max voltage, low byte = cell# with min voltage
     'CELL_MAX_NO': {
         'addr': 0x1224,
         'type': 'UINT8_HIGH',
@@ -81,7 +80,6 @@ REGISTERS = {
         'unit': '°C',
         'scale': 0.1,
     },
-    # T3/T4/T5 confirmed at 0x12BC/BD/BE (doc says 0x12F8+ but that's firmware V1.1)
     'TEMP_T3': {
         'addr': 0x12BC,
         'type': 'INT16',
@@ -102,15 +100,12 @@ REGISTERS = {
     },
 
     # ── Pack Voltage & Current ────────────────────────────────────────────────
-    # BatVoltage UINT16 @ 0x1289, mV → ÷1000 = V. Probe: 53012 → 53.012 V ✓
     'BAT_VOLTAGE': {
         'addr': 0x1289,
         'type': 'UINT16',
         'unit': 'V',
         'scale': 0.001,
     },
-    # BatCurrent INT32 @ 0x128C–0x128D, mA → ÷1000 = A. + = charge, − = discharge.
-    # Probe: -4812 → -4.812 A ✓
     'BAT_CURRENT': {
         'addr': 0x128C,
         'type': 'INT32',
@@ -120,8 +115,6 @@ REGISTERS = {
     },
 
     # ── SOC & Balance ─────────────────────────────────────────────────────────
-    # 0x1293 packed: low byte = SOC %, high byte = balance status.
-    # Probe: 0x0058 → low=88 (88% SOC), high=0 (off). Matches HA ✓
     'SOC_PERCENT': {
         'addr': 0x1293,
         'type': 'UINT8_LOW',
@@ -129,12 +122,10 @@ REGISTERS = {
     },
     'BALANCE_STATUS': {
         'addr': 0x1293,
-        'type': 'UINT8_HIGH',  # 0=off, 1=active(charge), 2=active(discharge)
+        'type': 'UINT8_HIGH',
     },
 
     # ── Capacity ──────────────────────────────────────────────────────────────
-    # All UINT32 (2 registers, big-endian), mAh → ÷1000 = Ah.
-    # SOC_CAP_REMAIN @ 0x1294: probe 276430 mAh = 276.430 Ah ✓
     'SOC_CAP_REMAIN': {
         'addr': 0x1294,
         'type': 'UINT32',
@@ -142,7 +133,6 @@ REGISTERS = {
         'unit': 'Ah',
         'scale': 0.001,
     },
-    # SOC_FULL_CAP @ 0x1296: probe 314000 mAh = 314.000 Ah ✓
     'SOC_FULL_CAP': {
         'addr': 0x1296,
         'type': 'UINT32',
@@ -152,7 +142,6 @@ REGISTERS = {
     },
 
     # ── Uptime ────────────────────────────────────────────────────────────────
-    # UINT32, seconds. Probe: 521084 s = 6 days ✓
     'UPTIME': {
         'addr': 0x129E,
         'type': 'UINT32',
@@ -160,8 +149,6 @@ REGISTERS = {
     },
 
     # ── Charge / Discharge MOS State ──────────────────────────────────────────
-    # 0x129C UINT32_SWAP: bit14=CHARGE enabled, bit13=DISCHARGE enabled.
-    # These reflect MOS gate states; both can be ON simultaneously (BMS ready).
     'CHARGE': {
         'addr': 0x129C,
         'type': 'UINT32_SWAP',
@@ -184,16 +171,12 @@ REGISTERS = {
     },
 
     # ── Balancing ─────────────────────────────────────────────────────────────
-    # Balancing current INT16 @ 0x12A4, mA → ÷1000 = A.
-    # Reads 0 when balancer is off; live during active balancing only.
     'BALANCING_CURRENT': {
         'addr': 0x12A4,
         'type': 'INT16',
         'unit': 'A',
         'scale': 0.001,
     },
-    # Balance trigger voltage FLOAT32 (IEEE-754) @ 0x12AE–0x12AF.
-    # Probe: 0x403F937D → 2.993 V (cell threshold to start balancing).
     'BALANCE_TRIGGER_VOLTAGE': {
         'addr': 0x12AE,
         'type': 'FLOAT32',
@@ -202,15 +185,11 @@ REGISTERS = {
     },
 
     # ── Cycle Statistics ──────────────────────────────────────────────────────
-    # SOCCycleCount: number of completed charge cycles.
-    # Probe @ 0x1298 UINT32: 0 ✓ (app shows 0)
     'CYCLE_COUNT': {
         'addr': 0x1298,
         'type': 'UINT32',
         'count': 2,
     },
-    # SOCCycleCap: Ah accumulated across all charge cycles.
-    # Probe @ 0x129A UINT32: 88252 mAh = 88.252 Ah ✓ (app shows ~84.8 Ah, delta = time)
     'TOTAL_CHG_CAPACITY': {
         'addr': 0x129A,
         'type': 'UINT32',
@@ -305,12 +284,12 @@ class JKBMSClient(BaseModbusClient):
     def get_all_data(self) -> dict:
         data = {}
 
-        # Read 3 x 64-register monitoring blocks: 0x1200, 0x1240, 0x1280
-        # (0x12C0 block gives exception on this firmware — all needed data is within 0x12BF)
+        # Leer en fragmentos de 32 registros para evitar truncamientos del Elfin/JK.
+        # Capturamos desde 0x1200 hasta 0x12BF (192 registros en total).
         full_block = []
-        for start in [0x1200, 0x1240, 0x1280]:
-            chunk = self.read_holding_registers(start, 64)
-            full_block.extend(chunk or [0] * 64)
+        for start in range(0x1200, 0x12C0, 32):
+            chunk = self.read_holding_registers(start, 32)
+            full_block.extend(chunk or [0] * 32)
 
         for key, reg in REGISTERS.items():
             addr = reg['addr']
