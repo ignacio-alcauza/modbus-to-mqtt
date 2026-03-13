@@ -187,6 +187,29 @@ REGISTERS = {
         'count': 2,
         'subtype': 'BITMASK',
     },
+
+    # ── Configuración (zona RW 0x1070–0x1086) ───────────────────────────
+    # Dump raw: 0x1070=[0,1] 0x1072=[0,1] 0x1074=[0,1] 0x107A=[0,3300]
+    # Los switches son UINT16 en la palabra baja (offset+1)
+    'CHARGE_SWITCH': {
+        'addr': 0x1071,
+        'type': 'UINT16',
+    },
+    'DISCHARGE_SWITCH': {
+        'addr': 0x1073,
+        'type': 'UINT16',
+    },
+    'BALANCE_SWITCH': {
+        'addr': 0x1079,
+        'type': 'UINT16',
+    },
+    # VolStartBalan @ 0x107B  UINT16, mV → V
+    'VOL_START_BALAN': {
+        'addr': 0x107B,
+        'type': 'UINT16',
+        'unit': 'V',
+        'scale': 0.001,
+    },
 }
 
 ALARM_BITS = {
@@ -225,6 +248,11 @@ class JKBMSClient(BaseModbusClient):
         if chunk:
             for i, v in enumerate(chunk):
                 data[0x12F0 + i] = v
+        # Configuración RW 0x1070–0x1088
+        chunk = self.read_holding_registers(0x1070, 28)
+        if chunk:
+            for i, v in enumerate(chunk):
+                data[0x1070 + i] = v
         return data
 
     def decode_value(self, chunk: list, reg_def: dict):
@@ -306,9 +334,7 @@ class JKBMSClient(BaseModbusClient):
             # Post-procesado
             if key == 'UPTIME':
                 val = self._format_uptime(val)
-            elif key == 'CHARGE':
-                val = 'ON' if val else 'OFF'
-            elif key == 'DISCHARGE':
+            elif key in ('CHARGE', 'DISCHARGE', 'CHARGE_SWITCH', 'DISCHARGE_SWITCH', 'BALANCE_SWITCH'):
                 val = 'ON' if val else 'OFF'
             elif key == 'BALANCE_STATUS':
                 val = {0: 'Off', 1: 'Charging', 2: 'Discharging'}.get(int(val), str(val))
