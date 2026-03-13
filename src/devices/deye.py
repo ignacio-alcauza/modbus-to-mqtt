@@ -180,14 +180,17 @@ class DeyeInverterClient(BaseModbusClient):
                 unit = reg.get("unit")
                 dclass = class_map.get(unit)
                 
-                sensors.append({
+                sensor = {
                     'id':             f"deye_{name.lower()}",
                     'name':           name.replace('_', ' ').title(),
                     'unit':           unit,
                     'device_class':   dclass,
-                    'state_class': 'total_increasing' if unit == 'kWh' else 'measurement',
                     'value_template': f"{{{{ value_json.{name} }}}}"
-                })
+                }
+                if unit:
+                    sensor['state_class'] = 'total_increasing' if unit == 'kWh' else 'measurement'
+                
+                sensors.append(sensor)
         
         sensors.append({
             'id': 'model',
