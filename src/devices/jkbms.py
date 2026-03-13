@@ -5,49 +5,68 @@ from utils.modbus import BaseModbusClient
 logger = logging.getLogger("modbus2mqtt.devices.jkbms")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# JK BMS JK-PB2A16S20P (Firmware v27) Register Map
+# JK BMS JK-PB2A16S20P  —  Firmware v27 (hw v19)
+# Holding Registers, función 0x03
+#
+# El firmware v27 difiere del doc oficial V1.1 en el bloque 0x1280–0x12CF:
+# el sub-bloque de SOC/capacidad/corriente aparece 8 registros más arriba
+# de lo que indica la documentación. Se usan las direcciones confirmadas
+# por sonda exhaustiva de memoria.
 # ─────────────────────────────────────────────────────────────────────────────
 
 REGISTERS = {
-    # ── Cell Voltages (×16) ───────────────────────────────────────────────────
+
+    # ── Voltajes Celdas ×16 (step=2 per-cell, doc oficial) ──────────────────
     'CELL_VOLTAGES': {
-        'addr': 0x1203,
+        'addr': 0x1200,
         'count': 16,
+        'step': 2,      # cada celda ocupa 2 bytes en una palabra de 16 bits
         'type': 'UINT16',
         'unit': 'V',
         'scale': 0.001,
     },
 
-    # ── Cell Resistances (×16) ────────────────────────────────────────────────
+    # ── Resistencias Cables ×16 (empírico: step=1, desde 0x1249) ────────────
     'CELL_RESISTANCES': {
-        'addr': 0x1247,
+        'addr': 0x1249,
         'count': 16,
+        'step': 1,
         'type': 'UINT16',
         'unit': 'mΩ',
         'scale': 0.001,
     },
 
-    # ── Cell Statistics ───────────────────────────────────────────────────────
+    # ── Estadísticas de Celdas (doc oficial) ─────────────────────────────────
     'CELL_AVG_VOLTAGE': {
-        'addr': 0x1222,
+        'addr': 0x1244,
         'type': 'UINT16',
         'unit': 'V',
         'scale': 0.001,
     },
     'CELL_VOLT_DIFF': {
-        'addr': 0x1223,
+        'addr': 0x1246,
         'type': 'UINT16',
         'unit': 'V',
         'scale': 0.001,
     },
+    'CELL_MAX_NO': {
+        'addr': 0x1248,
+        'type': 'UINT8_HIGH',
+    },
+    'CELL_MIN_NO': {
+        'addr': 0x1248,
+        'type': 'UINT8_LOW',
+    },
 
-    # ── Temperatures ──────────────────────────────────────────────────────────
+    # ── Temperaturas ──────────────────────────────────────────────────────────
+    # Empírico v27: MOS @ 0x1285 = 16.7°C. Doc dice 0x128A pero da 2.2°C (incorrecto).
     'TEMP_MOS': {
         'addr': 0x1285,
         'type': 'INT16',
         'unit': '°C',
         'scale': 0.1,
     },
+    # T1 @ 0x1296, T2 @ 0x1297 (empírico v27, confirmados ~14°C)
     'TEMP_T1': {
         'addr': 0x1296,
         'type': 'INT16',
@@ -60,84 +79,113 @@ REGISTERS = {
         'unit': '°C',
         'scale': 0.1,
     },
+    # T4 @ 0x12F5, T5 @ 0x12F6 (empírico v27, confirmados ~14-15°C)
     'TEMP_T4': {
-        'addr': 0x12f5,
+        'addr': 0x12F5,
         'type': 'INT16',
         'unit': '°C',
         'scale': 0.1,
     },
     'TEMP_T5': {
-        'addr': 0x12f6,
+        'addr': 0x12F6,
         'type': 'INT16',
         'unit': '°C',
         'scale': 0.1,
     },
 
-    # ── Pack Voltage & Current ────────────────────────────────────────────────
+    # ── Voltaje Pack — doc oficial UINT32 @ 0x1290, mV → V ──────────────────
     'BAT_VOLTAGE': {
-        'addr': 0x1291,
-        'type': 'UINT16',
+        'addr': 0x1290,
+        'type': 'UINT32',
+        'count': 2,
         'unit': 'V',
         'scale': 0.001,
     },
+
+    # ── Corriente — empírico v27: INT32 @ 0x128C, mA → A ────────────────────
+    # (doc dice 0x1298 pero en v27 ese registro es siempre 0)
     'BAT_CURRENT': {
-        'addr': 0x1294,
+        'addr': 0x128C,
         'type': 'INT32',
         'count': 2,
         'unit': 'A',
         'scale': 0.001,
     },
 
-    # ── SOC & Balance ─────────────────────────────────────────────────────────
+    # ── Balanceo ──────────────────────────────────────────────────────────────
+    'BALANCING_CURRENT': {
+        'addr': 0x12A4,
+        'type': 'INT16',
+        'unit': 'A',
+        'scale': 0.001,
+    },
+
+    # ── SOC — empírico v27: byte bajo de 0x12A3 ──────────────────────────────
     'SOC_PERCENT': {
-        'addr': 0x12a3,
-        'type': 'UINT16',
+        'addr': 0x12A3,
+        'type': 'UINT8_LOW',
         'unit': '%',
     },
+    'BALANCE_STATUS': {
+        'addr': 0x12A3,
+        'type': 'UINT8_HIGH',
+    },
 
-    # ── Capacity ──────────────────────────────────────────────────────────────
+    # ── Capacidades — empírico v27 (offset -8 vs doc) ─────────────────────────
+    # SOCCapRemain: INT32 @ 0x129C (doc 0x12A8), mAh → Ah
     'SOC_CAP_REMAIN': {
-        'addr': 0x12a4, # Probable, based on 0x12a6 shift
-        'type': 'UINT32',
+        'addr': 0x129C,
+        'type': 'INT32',
         'count': 2,
         'unit': 'Ah',
         'scale': 0.001,
     },
+    # SOCFullChargeCap: UINT32 @ 0x12A6 (confirmado: 314000 mAh = 314 Ah)
     'SOC_FULL_CAP': {
-        'addr': 0x12a6,
+        'addr': 0x12A6,
         'type': 'UINT32',
         'count': 2,
         'unit': 'Ah',
         'scale': 0.001,
     },
-
-    # ── Uptime ────────────────────────────────────────────────────────────────
-    'UPTIME': {
-        'addr': 0x12ae,
-        'type': 'UINT32',
-        'count': 2,
-    },
-
-    # ── Cycle Statistics ──────────────────────────────────────────────────────
+    # SOCCycleCount: UINT32 @ 0x12A8 (doc 0x12B0)
     'CYCLE_COUNT': {
-        'addr': 0x12a8, # Just before capacity
+        'addr': 0x12A8,
         'type': 'UINT32',
         'count': 2,
     },
+    # SOCCycleCap: UINT32 @ 0x12AA (doc 0x12B4), mAh → Ah
     'TOTAL_CHG_CAPACITY': {
-        'addr': 0x12aa,
+        'addr': 0x12AA,
         'type': 'UINT32',
         'count': 2,
         'unit': 'Ah',
         'scale': 0.001,
     },
 
-    # ── Settings ──────────────────────────────────────────────────────────────
-    'BALANCE_TRIGGER_VOLTAGE': {
-        'addr': 0x12be,
-        'type': 'FLOAT32',
+    # ── Tiempo operación — empírico: UINT32 @ 0x12AE (doc 0x12BC) ────────────
+    'UPTIME': {
+        'addr': 0x12AE,
+        'type': 'UINT32',
         'count': 2,
-        'unit': 'V',
+    },
+
+    # ── Estado Carga/Descarga — doc 0x12C0 ✅ ─────────────────────────────────
+    'CHARGE': {
+        'addr': 0x12C0,
+        'type': 'UINT8_HIGH',
+    },
+    'DISCHARGE': {
+        'addr': 0x12C0,
+        'type': 'UINT8_LOW',
+    },
+
+    # ── Alarmas — empírico: UINT32 @ 0x12A0–0x12A1 ───────────────────────────
+    'ALARMS_32BIT': {
+        'addr': 0x12A0,
+        'type': 'UINT32',
+        'count': 2,
+        'subtype': 'BITMASK',
     },
 }
 
@@ -163,160 +211,172 @@ ALARM_BITS = {
 
 class JKBMSClient(BaseModbusClient):
 
-    def decode_value(self, registers, reg_def):
-        if not registers:
-            return None
+    def _fetch_all(self) -> dict:
+        """Lee todos los bloques de registros necesarios (fragmentos de 16)."""
+        data = {}
+        # Zona principal 0x1200–0x12CF
+        for start in range(0x1200, 0x12D0, 16):
+            chunk = self.read_holding_registers(start, 16)
+            if chunk:
+                for i, v in enumerate(chunk):
+                    data[start + i] = v
+        # Temperaturas extra 0x12F0–0x12FF
+        chunk = self.read_holding_registers(0x12F0, 16)
+        if chunk:
+            for i, v in enumerate(chunk):
+                data[0x12F0 + i] = v
+        return data
+
+    def decode_value(self, chunk: list, reg_def: dict):
         rtype = reg_def.get('type', 'UINT16')
         scale = reg_def.get('scale', 1.0)
 
-        if rtype in ['UINT32', 'INT32', 'UINT32_SWAP', 'INT32_SWAP', 'FLOAT32', 'FLOAT32_SWAP'] and len(registers) < 2:
+        if rtype in ('UINT32', 'INT32', 'FLOAT32') and len(chunk) < 2:
             return None
-
         if rtype == 'UINT16':
-            val = registers[0]
+            val = chunk[0]
         elif rtype == 'INT16':
-            val = struct.unpack('>h', struct.pack('>H', registers[0]))[0]
+            val = struct.unpack('>h', struct.pack('>H', chunk[0]))[0]
         elif rtype == 'UINT32':
-            val = (registers[0] << 16) + registers[1]
+            val = (chunk[0] << 16) | chunk[1]
         elif rtype == 'INT32':
-            val = struct.unpack('>i', struct.pack('>I', (registers[0] << 16) + registers[1]))[0]
-        elif rtype == 'UINT32_SWAP':
-            val = (registers[1] << 16) + registers[0]
-        elif rtype == 'INT32_SWAP':
-            val = struct.unpack('>i', struct.pack('>I', (registers[1] << 16) + registers[0]))[0]
+            val = struct.unpack('>i', struct.pack('>I', (chunk[0] << 16) | chunk[1]))[0]
         elif rtype == 'FLOAT32':
-            return round(struct.unpack('>f', struct.pack('>HH', registers[0], registers[1]))[0], 3)
-        elif rtype == 'FLOAT32_SWAP':
-            return round(struct.unpack('>f', struct.pack('>HH', registers[1], registers[0]))[0], 3)
+            return round(struct.unpack('>f', struct.pack('>HH', chunk[0], chunk[1]))[0], 3)
         elif rtype == 'UINT8_LOW':
-            val = registers[0] & 0xFF
+            val = chunk[0] & 0xFF
         elif rtype == 'UINT8_HIGH':
-            val = (registers[0] >> 8) & 0xFF
+            val = (chunk[0] >> 8) & 0xFF
         else:
-            val = registers[0]
+            val = chunk[0]
 
         return round(val * scale, 3)
 
     def _format_uptime(self, seconds: int) -> str:
         if not isinstance(seconds, (int, float)) or seconds < 0:
             return "0s"
-
         minutes, sec = divmod(int(seconds), 60)
         hours, minutes = divmod(minutes, 60)
         days, hours = divmod(hours, 24)
-        
         if days > 0:
-            h_str = f", {hours}h" if hours > 0 else ""
-            return f"{days} día{'s' if days != 1 else ''}{h_str}"
-
+            h_str = f", {hours}h" if hours else ""
+            return f"{days}d{h_str}"
         parts = []
-        if hours > 0: parts.append(f"{hours}h")
-        if minutes > 0: parts.append(f"{minutes}m")
-        if sec > 0 or not parts: parts.append(f"{sec}s")
+        if hours:    parts.append(f"{hours}h")
+        if minutes:  parts.append(f"{minutes}m")
+        if sec or not parts: parts.append(f"{sec}s")
         return " ".join(parts)
 
     def get_all_data(self) -> dict:
+        mem = self._fetch_all()
         data = {}
 
-        # Lectura por bloques de 16 para máxima estabilidad en FW v27
-        full_block = {}
-        # Escaneamos los rangos de interés: 0x1200-0x12CF y 0x12F0-0x12FF
-        for start in list(range(0x1200, 0x12D0, 16)) + [0x12F0]:
-            chunk = self.read_holding_registers(start, 16)
-            if chunk:
-                for i, v in enumerate(chunk):
-                    full_block[start + i] = v
-
         for key, reg in REGISTERS.items():
-            addr = reg['addr']
-            count = reg.get('count', 1)
-            
-            # Recopilamos el chunk de memoria
-            chunk = []
-            for a in range(addr, addr + count):
-                if a in full_block:
-                    chunk.append(full_block[a])
-                else:
-                    break
-            
-            if len(chunk) == count:
-                if key in ['CELL_VOLTAGES', 'CELL_RESISTANCES']:
-                    data[key] = [round(v * reg.get('scale', 1.0), 3) for v in chunk]
-                else:
-                    val = self.decode_value(chunk, reg)
-                    if val is not None:
-                        if key == 'UPTIME':
-                            val = self._format_uptime(val)
-                    data[key] = val
+            addr   = reg['addr']
+            rtype  = reg.get('type', 'UINT16')
+            step   = reg.get('step', 1)
 
-        # Derived: charging / discharging power (W)
-        bat_vol = data.get('BAT_VOLTAGE', 0.0)
-        bat_current = data.get('BAT_CURRENT', 0.0)
-        bat_power = bat_vol * bat_current
+            # Arrays con paso variable (celdas)
+            if key in ('CELL_VOLTAGES', 'CELL_RESISTANCES'):
+                vals = []
+                for i in range(reg['count']):
+                    v = mem.get(addr + i * step)
+                    if v is None:
+                        break
+                    vals.append(round(v * reg.get('scale', 1.0), 4))
+                if vals:
+                    data[key] = vals
+                continue
 
-        if bat_current > 0:
-            data['CHARGING_POWER'] = round(bat_power, 0)
+            # Registros de 2 palabras (UINT32/INT32)
+            if rtype in ('UINT32', 'INT32', 'FLOAT32'):
+                chunk = [mem.get(addr), mem.get(addr + 1)]
+                if None in chunk:
+                    continue
+            else:
+                v = mem.get(addr)
+                if v is None:
+                    continue
+                chunk = [v]
+
+            val = self.decode_value(chunk, reg)
+            if val is None:
+                continue
+
+            # Post-procesado
+            if key == 'UPTIME':
+                val = self._format_uptime(val)
+            elif key == 'CHARGE':
+                val = 'ON' if val else 'OFF'
+            elif key == 'DISCHARGE':
+                val = 'ON' if val else 'OFF'
+            elif key == 'BALANCE_STATUS':
+                val = {0: 'Off', 1: 'Charging', 2: 'Discharging'}.get(int(val), str(val))
+
+            data[key] = val
+
+        # Potencia derivada
+        bat_v = data.get('BAT_VOLTAGE', 0.0)
+        bat_i = data.get('BAT_CURRENT', 0.0)
+        bat_p = bat_v * bat_i
+        if bat_i > 0:
+            data['CHARGING_POWER']    = round(bat_p, 0)
             data['DISCHARGING_POWER'] = 0.0
         else:
-            data['CHARGING_POWER'] = 0.0
-            data['DISCHARGING_POWER'] = round(abs(bat_power), 0)
+            data['CHARGING_POWER']    = 0.0
+            data['DISCHARGING_POWER'] = round(abs(bat_p), 0)
+
+        # Alarmas decodificadas
+        alarm_val = int(data.get('ALARMS_32BIT', 0))
+        alarms = [ALARM_BITS[b] for b in ALARM_BITS if (alarm_val >> b) & 1]
+        data['PARSED_ALARMS'] = alarms if alarms else ['Normal']
 
         return data
 
     def get_discovery_sensors(self) -> list:
         sensors = []
-
         class_map = {
-            'V': 'voltage',
-            'mΩ': None, # Resistance unit
-            'A': 'current',
-            'W': 'power',
-            '°C': 'temperature',
-            '%': 'battery',
-            'Ah': None,
-            's': 'duration',
+            'V': 'voltage', 'A': 'current', 'W': 'power',
+            '°C': 'temperature', '%': 'battery', 'Ah': None, 'mΩ': None,
         }
-
         for key, reg in REGISTERS.items():
-            if key in ['CELL_VOLTAGES', 'CELL_RESISTANCES']:
-                count = reg.get('count', 1)
+            if key in ('CELL_VOLTAGES', 'CELL_RESISTANCES'):
                 unit = reg.get('unit')
-                dclass = class_map.get(unit)
-                name_prefix = "Cell Voltage" if key == 'CELL_VOLTAGES' else "Cell Resistance"
-                for i in range(count):
+                prefix = 'Cell Voltage' if key == 'CELL_VOLTAGES' else 'Cell Resistance'
+                for i in range(reg['count']):
                     sensors.append({
-                        'id': f"{key.lower()}_{i + 1}",
-                        'name': f"{name_prefix} {i + 1}",
-                        'unit': unit,
-                        'device_class': dclass,
+                        'id':             f"{key.lower()}_{i + 1}",
+                        'name':           f"{prefix} {i + 1}",
+                        'unit':           unit,
+                        'device_class':   class_map.get(unit),
                         'value_template': f"{{{{ value_json.{key}[{i}] }}}}",
                     })
+            elif key == 'ALARMS_32BIT':
+                continue
             else:
                 unit = reg.get('unit')
-                dclass = class_map.get(unit)
-                name = key.replace('_', ' ').title()
                 sensors.append({
-                    'id': key.lower(),
-                    'name': name,
-                    'unit': unit,
-                    'device_class': dclass,
+                    'id':             key.lower(),
+                    'name':           key.replace('_', ' ').title(),
+                    'unit':           unit,
+                    'device_class':   class_map.get(unit),
                     'value_template': f"{{{{ value_json.{key} }}}}",
                 })
 
-        # Derived / computed sensors
-        sensors.append({
-            'id': 'charging_power',
-            'name': 'Charging Power',
-            'unit': 'W',
-            'device_class': 'power',
-            'value_template': '{{ value_json.CHARGING_POWER }}'
-        })
-        sensors.append({
-            'id': 'discharging_power',
-            'name': 'Discharging Power',
-            'unit': 'W',
-            'device_class': 'power',
-            'value_template': '{{ value_json.DISCHARGING_POWER }}'
-        })
-
+        sensors += [
+            {
+                'id': 'parsed_alarms', 'name': 'Active Alarms',
+                'value_template': '{{ value_json.PARSED_ALARMS | join(", ") }}'
+            },
+            {
+                'id': 'charging_power', 'name': 'Charging Power',
+                'unit': 'W', 'device_class': 'power',
+                'value_template': '{{ value_json.CHARGING_POWER }}'
+            },
+            {
+                'id': 'discharging_power', 'name': 'Discharging Power',
+                'unit': 'W', 'device_class': 'power',
+                'value_template': '{{ value_json.DISCHARGING_POWER }}'
+            },
+        ]
         return sensors
