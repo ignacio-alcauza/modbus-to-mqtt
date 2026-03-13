@@ -185,7 +185,7 @@ class DeyeInverterClient(BaseModbusClient):
                     'name':           name.replace('_', ' ').title(),
                     'unit':           unit,
                     'device_class':   dclass,
-                    'value_template': f"{{{{ value_json.{name} }}}}"
+                    'value_template': f"{{{{ value_json.{name} | int }}}}" if name == 'BATTERY_SOC' else f"{{{{ value_json.{name} }}}}"
                 }
                 if unit:
                     sensor['state_class'] = 'total_increasing' if unit == 'kWh' else 'measurement'

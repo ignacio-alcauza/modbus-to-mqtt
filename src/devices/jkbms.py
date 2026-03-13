@@ -376,7 +376,7 @@ class JKBMSClient(BaseModbusClient):
                     'name':           key.replace('_', ' ').title(),
                     'unit':           unit,
                     'device_class':   class_map.get(unit),
-                    'value_template': f"{{{{ value_json.{key} }}}}",
+                    'value_template': f"{{{{ value_json.{key} | int }}}}" if key == 'SOC_PERCENT' else f"{{{{ value_json.{key} }}}}"
                 })
 
         sensors += [
