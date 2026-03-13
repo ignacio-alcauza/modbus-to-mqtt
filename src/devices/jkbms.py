@@ -50,12 +50,12 @@ REGISTERS = {
         'scale': 0.001,
     },
     'CELL_MAX_NO': {
-        'addr': 0x1226,     # doc 48, shifted
-        'type': 'UINT8_HIGH',
+        'addr': 0x123B,     # Empírico v27: byte bajo
+        'type': 'UINT8_LOW',
     },
     'CELL_MIN_NO': {
-        'addr': 0x1226,
-        'type': 'UINT8_LOW',
+        'addr': 0x123C,     # Empírico v27: byte alto
+        'type': 'UINT8_HIGH',
     },
 
     # ── Temperaturas ──────────────────────────────────────────────────────────
@@ -231,10 +231,8 @@ class JKBMSClient(BaseModbusClient):
         """Lee bloques de registros en trozos de 16 para máxima compatibilidad."""
         data = {}
         ranges = [
-            (0x1200, 16), # Celdas V
-            (0x1220, 16), # Stats
-            (0x1240, 32), # Resistencias
-            (0x1280, 16), # MOS Temp
+            (0x1200, 96), # Cubre 0x1200 a 0x125F (Celdas, Stats, Resistencias)
+            (0x1280, 16), # MOS Temp, Bal. Current
             (0x1290, 64), # Sensores Pack + SOC + Capacidad + Uptime
             (0x12F0, 16), # Temps extra
             (0x1070, 32), # Config
