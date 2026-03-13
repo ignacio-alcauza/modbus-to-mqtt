@@ -1,202 +1,138 @@
 import struct
-import time
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Union
 from utils.modbus import BaseModbusClient
-
-# Full Deye Hybrid Inverter Registers (Read-Only)
-# Word Order: Deye uses Little-Endian for 32-bit registers (Low word first).
-DEYE_HYBRID_REGISTERS = {
-    "Total_Energy": {
-        "base": 60,
-        "count": 45,
-        "registers": [
-            {"name": "DAY_PV_ENERGY", "address": 60, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
-            {"name": "TOTAL_PV_ENERGY", "address": 98, "count": 2, "type": "U32_LE", "gain": 10, "unit": "kWh"},
-            {"name": "DAY_BATTERY_CHARGE", "address": 70, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
-            {"name": "DAY_BATTERY_DISCHARGE", "address": 71, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
-            {"name": "TOTAL_BATTERY_CHARGE", "address": 72, "count": 2, "type": "U32_LE", "gain": 10, "unit": "kWh"},
-            {"name": "TOTAL_BATTERY_DISCHARGE", "address": 74, "count": 2, "type": "U32_LE", "gain": 10, "unit": "kWh"},
-            {"name": "DAY_GRID_BUY", "address": 76, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
-            {"name": "DAY_GRID_SELL", "address": 77, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
-            {"name": "TOTAL_GRID_BUY", "address": 78, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
-            {"name": "TOTAL_GRID_SELL", "address": 80, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
-            {"name": "TOTAL_LOAD_ENERGY", "address": 96, "count": 2, "type": "U32_LE", "gain": 10, "unit": "kWh"},
-            {"name": "GRID_FREQUENCY", "address": 79, "count": 1, "type": "U16", "gain": 100, "unit": "Hz"},
-        ]
-    },
-    "Live_Data_1": {
-        "base": 100,
-        "count": 55,
-        "registers": [
-            {"name": "RADIATOR_TEMP", "address": 111, "count": 1, "type": "I16", "gain": 100, "unit": "°C"},
-            {"name": "PV1_VOLTAGE", "address": 109, "count": 1, "type": "U16", "gain": 10, "unit": "V"},
-            {"name": "PV1_CURRENT", "address": 110, "count": 1, "type": "U16", "gain": 10, "unit": "A"},
-            {"name": "GRID_L1_VOLTAGE", "address": 150, "count": 1, "type": "U16", "gain": 10, "unit": "V"},
-        ]
-    },
-    "Live_Data_2": {
-        "base": 160,
-        "count": 40,
-        "registers": [
-            {"name": "GRID_L1_POWER", "address": 166, "count": 1, "type": "I16", "unit": "W"},
-            {"name": "GRID_TOTAL_POWER", "address": 169, "count": 1, "type": "I16", "unit": "W"},
-            {"name": "LOAD_L1_POWER", "address": 172, "count": 1, "type": "U16", "unit": "W"},
-            {"name": "LOAD_TOTAL_POWER", "address": 175, "count": 1, "type": "U16", "unit": "W"},
-            {"name": "BATTERY_TEMP", "address": 182, "count": 1, "type": "I16", "gain": 10, "unit": "°C"},
-            {"name": "BATTERY_VOLTAGE", "address": 183, "count": 1, "type": "U16", "gain": 100, "unit": "V"},
-            {"name": "BATTERY_SOC", "address": 184, "count": 1, "type": "U16", "unit": "%"},
-            {"name": "PV1_POWER", "address": 186, "count": 1, "type": "U16", "unit": "W"},
-            {"name": "PV2_POWER", "address": 187, "count": 1, "type": "U16", "unit": "W"},
-            {"name": "BATTERY_POWER", "address": 190, "count": 1, "type": "I16", "unit": "W"},
-            {"name": "BATTERY_CURRENT", "address": 191, "count": 1, "type": "I16", "gain": 100, "unit": "A"},
-        ]
-    }
-}
 
 logger = logging.getLogger("modbus2mqtt.devices.deye")
 
-class DeyeInverterClient(BaseModbusClient):
-    """Client for reading Deye Hybrid Inverter data via Modbus TCP."""
+# ─────────────────────────────────────────────────────────────────────────────
+# DEYE Inverter Modbus Map (SUN-6K-SG05LP1-EU-AM2-P)
+# Confirmado con sonda exhaustiva y comparación en vivo
+# ─────────────────────────────────────────────────────────────────────────────
 
-    def __init__(self, host: str, port: int, unit_id: int = 1, model: str = None):
-        super().__init__(host, port, unit_id)
-        self.model = model
+REGISTERS = {
+    # ── Batería ──────────────────────────────────────────────────────────────
+    'BAT_VOLTAGE': {
+        'addr': 183, # 0x00B7
+        'type': 'UINT16',
+        'unit': 'V',
+        'scale': 0.01,
+    },
+    'BAT_CURRENT': {
+        'addr': 191, # 0x00BF
+        'type': 'INT16',
+        'unit': 'A',
+        'scale': -0.01, # El inversor reporta -3017 para 30.17A de carga (negativo=carga)
+    },
+    'BAT_POWER': {
+        'addr': 190, # 0x00BE
+        'type': 'INT16',
+        'unit': 'W',
+        'scale': -1.0, # El inversor reporta negativo para carga (p.ej. -1674W)
+    },
+    'BAT_SOC': {
+        'addr': 184, # 0x00B8
+        'type': 'UINT16',
+        'unit': '%',
+    },
 
-    def _decode_value(self, registers: List[int], reg_def: dict) -> Any:
-        reg_type = reg_def["type"]
-        gain = reg_def.get("gain", 1)
+    # ── Red (Grid) ────────────────────────────────────────────────────────────
+    'GRID_VOLTAGE': {
+        'addr': 150, # 0x0096
+        'type': 'UINT16',
+        'unit': 'V',
+        'scale': 0.1,
+    },
+    'GRID_POWER': {
+        'addr': 169, # 0x00A9
+        'type': 'INT16',
+        'unit': 'W',
+    },
+    'GRID_FREQ': {
+        'addr': 161, # 0x00A1
+        'type': 'UINT16',
+        'unit': 'Hz',
+        'scale': 0.01,
+    },
 
-        try:
-            if reg_type == "STR":
-                raw_bytes = b""
-                for reg in registers:
-                    raw_bytes += struct.pack(">H", reg)
-                return raw_bytes.decode("ascii", errors="replace").rstrip("\x00").strip()
+    # ── Solar (PV) ────────────────────────────────────────────────────────────
+    'PV1_VOLTAGE': {
+        'addr': 109, # 0x006D
+        'type': 'UINT16',
+        'unit': 'V',
+        'scale': 0.1,
+    },
+    'PV1_POWER': {
+        'addr': 186, # 0x00BA
+        'type': 'UINT16',
+        'unit': 'W',
+    },
+    'PV2_VOLTAGE': {
+        'addr': 111, # 0x006F
+        'type': 'UINT16',
+        'unit': 'V',
+        'scale': 0.1,
+    },
+    'PV2_CURRENT': {
+        'addr': 112, # 0x0070
+        'type': 'UINT16',
+        'unit': 'A',
+        'scale': 0.1,
+    },
+    'PV2_POWER': {
+        'addr': 187, # 0x00BB
+        'type': 'UINT16',
+        'unit': 'W',
+    },
 
-            elif reg_type == "U16":
-                value = registers[0]
-                if value == 0xFFFF: return None
-                return round(value / gain, 3) if gain != 1 else value
+    # ── Consumo (Load) ────────────────────────────────────────────────────────
+    'LOAD_POWER': {
+        'addr': 178, # 0x00B2
+        'type': 'UINT16',
+        'unit': 'W',
+    },
+}
 
-            elif reg_type == "I16":
-                value = registers[0]
-                if value == 0x7FFF: return None
-                if value >= 0x8000:
-                    value -= 0x10000
-                return round(value / gain, 3) if gain != 1 else value
-
-            elif reg_type == "U32_LE":
-                # Little Endian Words (Low word first)
-                if len(registers) < 2: return None
-                value = (registers[1] << 16) | registers[0]
-                if value == 0xFFFFFFFF: return None
-                return round(value / gain, 3) if gain != 1 else value
-
-            elif reg_type == "I32":
-                if len(registers) < 2: return None
-                value = (registers[1] << 16) | registers[0] # Same LE word order
-                if value == 0x7FFFFFFF: return None
-                if value >= 0x80000000:
-                    value -= 0x100000000
-                return round(value / gain, 3) if gain != 1 else value
-                
-            else:
-                logger.warning("Unknown register type: %s", reg_type)
-                return registers
-
-        except Exception as e:
-            logger.error("Error decoding %s: %s", reg_def.get("name", "unknown"), e)
-            return None
-
+class DeyeClient(BaseModbusClient):
     def get_all_data(self) -> dict:
-        all_data = {}
-        all_data['_raw_data'] = {}
-        
-        if not hasattr(self, '_device_sn'):
-            sn_data = self.read_holding_registers(3, 5)
-            if sn_data:
-                self._device_sn = self._decode_value(sn_data, {"type": "STR"})
-            time.sleep(0.35)
+        data = {}
+        mem = {}
+        # Lectura en dos bloques para cubrir 100-200
+        for start in [100, 150]:
+            r = self.read_holding_registers(start, 50)
+            if r:
+                for i, v in enumerate(r):
+                    mem[start + i] = v
 
-        for group_name, group_def in DEYE_HYBRID_REGISTERS.items():
-            base = group_def["base"]
-            total_count = group_def["count"]
-            registers_list = group_def["registers"]
+        for key, reg in REGISTERS.items():
+            addr = reg['addr']
+            rtype = reg.get('type', 'UINT16')
+            scale = reg.get('scale', 1.0)
             
-            full_block_data = []
-            for i in range(0, total_count, 50):
-                chunk_base = base + i
-                chunk_count = min(50, total_count - i)
-                
-                chunk_data = self.read_holding_registers(chunk_base, chunk_count)
-                if chunk_data:
-                    full_block_data.extend(chunk_data)
-                else:
-                    logger.error("Failed to read group %s at %d", group_name, chunk_base)
-                    break
-                
-                time.sleep(0.35) 
+            v = mem.get(addr)
+            if v is None: continue
             
-            if not full_block_data:
-                continue
-                
-            all_data['_raw_data'][group_name] = full_block_data
+            if rtype == 'INT16':
+                val = struct.unpack('>h', struct.pack('>H', v))[0]
+            else:
+                val = v
             
-            for reg_def in registers_list:
-                name = reg_def["name"]
-                offset = reg_def["address"] - base
-                reg_count = reg_def["count"]
-                
-                if 0 <= offset < len(full_block_data) and offset + reg_count <= len(full_block_data):
-                    chunk = full_block_data[offset : offset + reg_count]
-                    val = self._decode_value(chunk, reg_def)
-                    if val is not None:
-                        # Battery temp offset fix (offset 100.0)
-                        if name == "BATTERY_TEMP" and val > 100:
-                            val = round(val - 100.0, 1)
-                        all_data[name] = val
-
-        if hasattr(self, '_device_sn'):
-            all_data['DEVICE_SN'] = self._device_sn
+            data[key] = round(val * scale, 3)
             
-        if self.model:
-            all_data['MODEL'] = self.model
-
-        return all_data
+        return data
 
     def get_discovery_sensors(self) -> list:
         sensors = []
         class_map = {
-            'V': 'voltage',
-            'A': 'current',
-            'W': 'power',
-            '°C': 'temperature',
-            '%': 'battery',
-            'Hz': 'frequency',
-            'kWh': 'energy'
+            'V': 'voltage', 'A': 'current', 'W': 'power',
+            '°C': 'temperature', '%': 'battery', 'Hz': 'frequency'
         }
-        
-        for group in DEYE_HYBRID_REGISTERS.values():
-            for reg in group["registers"]:
-                name = reg["name"]
-                unit = reg.get("unit")
-                dclass = class_map.get(unit)
-                
-                sensors.append({
-                    'id': name.lower(),
-                    'name': name.replace('_', ' ').title(),
-                    'unit': unit,
-                    'device_class': dclass,
-                    'state_class': 'total_increasing' if unit == 'kWh' else 'measurement',
-                    'value_template': f"{{{{ value_json.{name} }}}}"
-                })
-        
-        sensors.append({
-            'id': 'model',
-            'name': 'Model',
-            'value_template': '{{ value_json.MODEL }}'
-        })
-        
+        for key, reg in REGISTERS.items():
+            unit = reg.get('unit')
+            sensors.append({
+                'id':             f"deye_{key.lower()}",
+                'name':           f"Deye {key.replace('_', ' ').title()}",
+                'unit':           unit,
+                'device_class':   class_map.get(unit),
+                'value_template': f"{{{{ value_json.{key} }}}}",
+            })
         return sensors

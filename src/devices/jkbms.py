@@ -16,19 +16,19 @@ logger = logging.getLogger("modbus2mqtt.devices.jkbms")
 
 REGISTERS = {
 
-    # ── Voltajes Celdas ×16 (step=2 per-cell, doc oficial) ──────────────────
+    # ── Voltajes Celdas ×16 (step=1 contiguous, confirmed v27 probe) ─────────
     'CELL_VOLTAGES': {
         'addr': 0x1200,
         'count': 16,
-        'step': 2,      # cada celda ocupa 2 bytes en una palabra de 16 bits
+        'step': 1,      # Contiguous in v27
         'type': 'UINT16',
         'unit': 'V',
         'scale': 0.001,
     },
 
-    # ── Resistencias Cables ×16 (empírico: step=1, desde 0x1249) ────────────
+    # ── Resistencias Cables ×16 (empírico v27: 0x124D definitive) ────────────
     'CELL_RESISTANCES': {
-        'addr': 0x1249,
+        'addr': 0x124D,
         'count': 16,
         'step': 1,
         'type': 'UINT16',
@@ -36,25 +36,25 @@ REGISTERS = {
         'scale': 0.001,
     },
 
-    # ── Estadísticas de Celdas (doc oficial) ─────────────────────────────────
+    # ── Estadísticas de Celdas (v27 reality: 0x1220 range) ───────────────────
     'CELL_AVG_VOLTAGE': {
-        'addr': 0x1244,
+        'addr': 0x1222,
         'type': 'UINT16',
         'unit': 'V',
         'scale': 0.001,
     },
     'CELL_VOLT_DIFF': {
-        'addr': 0x1246,
+        'addr': 0x1225,
         'type': 'UINT16',
         'unit': 'V',
         'scale': 0.001,
     },
     'CELL_MAX_NO': {
-        'addr': 0x1248,
+        'addr': 0x1226,     # doc 48, shifted
         'type': 'UINT8_HIGH',
     },
     'CELL_MIN_NO': {
-        'addr': 0x1248,
+        'addr': 0x1226,
         'type': 'UINT8_LOW',
     },
 
@@ -66,7 +66,7 @@ REGISTERS = {
         'unit': '°C',
         'scale': 0.1,
     },
-    # T1 @ 0x1296, T2 @ 0x1297 (empírico v27, confirmados ~14°C)
+    # T1 @ 0x1296, T2 @ 0x1297 (empírico v27)
     'TEMP_T1': {
         'addr': 0x1296,
         'type': 'INT16',
@@ -93,54 +93,50 @@ REGISTERS = {
         'scale': 0.1,
     },
 
-    # ── Voltaje Pack — doc oficial UINT32 @ 0x1290, mV → V ──────────────────
+    # ── Voltaje Pack (v27: 0x1291) ──────────────────────────────────────────
     'BAT_VOLTAGE': {
-        'addr': 0x1290,
-        'type': 'UINT32',
-        'count': 2,
+        'addr': 0x1291,
+        'type': 'UINT16',
         'unit': 'V',
         'scale': 0.001,
     },
 
-    # ── Corriente — empírico v27: INT32 @ 0x128C, mA → A ────────────────────
-    # (doc dice 0x1298 pero en v27 ese registro es siempre 0)
+    # ── Corriente (v27: 0x1295) ─────────────────────────────────────────────
+    # INT16, mA → A. Positivo = carga, Negativo = descarga.
     'BAT_CURRENT': {
-        'addr': 0x128C,
-        'type': 'INT32',
-        'count': 2,
+        'addr': 0x1295,
+        'type': 'INT16',
         'unit': 'A',
         'scale': 0.001,
     },
-
-    # ── Balanceo ──────────────────────────────────────────────────────────────
     'BALANCING_CURRENT': {
-        'addr': 0x12A4,
+        'addr': 0x1286,     # De sonda: 0x1286=3 (0.003A)
         'type': 'INT16',
         'unit': 'A',
         'scale': 0.001,
     },
 
-    # ── SOC — empírico v27: byte bajo de 0x12A3 ──────────────────────────────
+    # ── SOC % (v27: 0x12A3) ────────────────────────────────────────────────
     'SOC_PERCENT': {
         'addr': 0x12A3,
-        'type': 'UINT8_LOW',
+        'type': 'UINT16',
         'unit': '%',
     },
     'BALANCE_STATUS': {
-        'addr': 0x12A3,
-        'type': 'UINT8_HIGH',
+        'addr': 0x12A8,     # De sonda: 0x12A4 row shows 77 at A3, then 3, 45667, 4, 51856, 0, 0, 2...
+        'type': 'UINT16',
     },
 
-    # ── Capacidades — empírico v27 (offset -8 vs doc) ─────────────────────────
-    # SOCCapRemain: INT32 @ 0x129C (doc 0x12A8), mAh → Ah
+    # ── Capacidades (v27 definitive) ─────────────────────────────────────────
+    # SOCCapRemain: UINT32 @ 0x12A4-12A5 (3<<16 | 45667 = 242275 mAh)
     'SOC_CAP_REMAIN': {
-        'addr': 0x129C,
-        'type': 'INT32',
+        'addr': 0x12A4,
+        'type': 'UINT32',
         'count': 2,
         'unit': 'Ah',
         'scale': 0.001,
     },
-    # SOCFullChargeCap: UINT32 @ 0x12A6 (confirmado: 314000 mAh = 314 Ah)
+    # SOCFullChargeCap: UINT32 @ 0x12A6-12A7 (4<<16 | 51856 = 314000 mAh)
     'SOC_FULL_CAP': {
         'addr': 0x12A6,
         'type': 'UINT32',
@@ -148,13 +144,7 @@ REGISTERS = {
         'unit': 'Ah',
         'scale': 0.001,
     },
-    # SOCCycleCount: UINT32 @ 0x12A8 (doc 0x12B0)
-    'CYCLE_COUNT': {
-        'addr': 0x12A8,
-        'type': 'UINT32',
-        'count': 2,
-    },
-    # SOCCycleCap: UINT32 @ 0x12AA (doc 0x12B4), mAh → Ah
+    # Total Charge Capacity: UINT32 @ 0x12AA-12AB (2<<16 | 12688 = 143760 mAh)
     'TOTAL_CHG_CAPACITY': {
         'addr': 0x12AA,
         'type': 'UINT32',
@@ -162,29 +152,32 @@ REGISTERS = {
         'unit': 'Ah',
         'scale': 0.001,
     },
+    'CYCLE_COUNT': {
+        'addr': 0x1292,     # De sonda: 0x1292=24 (probable ciclo count)
+        'type': 'UINT16',
+    },
 
-    # ── Tiempo operación — empírico: UINT32 @ 0x12AE (doc 0x12BC) ────────────
+    # ── Uptime (v27: 0x12AE-12AF) ────────────────────────────────────────────
     'UPTIME': {
         'addr': 0x12AE,
         'type': 'UINT32',
         'count': 2,
     },
 
-    # ── Estado Carga/Descarga — doc 0x12C0 ✅ ─────────────────────────────────
+    # ── Estado Carga/Descarga (v27: 0x12B8) ──────────────────────────────────
     'CHARGE': {
-        'addr': 0x12C0,
+        'addr': 0x12B8,
         'type': 'UINT8_HIGH',
     },
     'DISCHARGE': {
-        'addr': 0x12C0,
+        'addr': 0x12B8,
         'type': 'UINT8_LOW',
     },
 
-    # ── Alarmas — empírico: UINT32 @ 0x12A0–0x12A1 ───────────────────────────
+    # ── Alarmas (v27: 0x12BF) ────────────────────────────────────────────────
     'ALARMS_32BIT': {
-        'addr': 0x12A0,
-        'type': 'UINT32',
-        'count': 2,
+        'addr': 0x12BF,
+        'type': 'UINT16',
         'subtype': 'BITMASK',
     },
 
@@ -235,24 +228,23 @@ ALARM_BITS = {
 class JKBMSClient(BaseModbusClient):
 
     def _fetch_all(self) -> dict:
-        """Lee todos los bloques de registros necesarios (fragmentos de 16)."""
+        """Lee bloques de registros en trozos de 16 para máxima compatibilidad."""
         data = {}
-        # Zona principal 0x1200–0x12CF
-        for start in range(0x1200, 0x12D0, 16):
-            chunk = self.read_holding_registers(start, 16)
-            if chunk:
-                for i, v in enumerate(chunk):
-                    data[start + i] = v
-        # Temperaturas extra 0x12F0–0x12FF
-        chunk = self.read_holding_registers(0x12F0, 16)
-        if chunk:
-            for i, v in enumerate(chunk):
-                data[0x12F0 + i] = v
-        # Configuración RW 0x1070–0x1088
-        chunk = self.read_holding_registers(0x1070, 28)
-        if chunk:
-            for i, v in enumerate(chunk):
-                data[0x1070 + i] = v
+        ranges = [
+            (0x1200, 16), # Celdas V
+            (0x1220, 16), # Stats
+            (0x1240, 32), # Resistencias
+            (0x1280, 16), # MOS Temp
+            (0x1290, 64), # Sensores Pack + SOC + Capacidad + Uptime
+            (0x12F0, 16), # Temps extra
+            (0x1070, 32), # Config
+        ]
+        for start, count in ranges:
+            for base in range(start, start + count, 16):
+                chunk = self.read_holding_registers(base, 16)
+                if chunk:
+                    for i, v in enumerate(chunk):
+                        data[base + i] = v
         return data
 
     def decode_value(self, chunk: list, reg_def: dict):
