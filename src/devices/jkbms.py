@@ -362,7 +362,7 @@ class JKBMSClient(BaseModbusClient):
                 for i in range(reg['count']):
                     sensors.append({
                         'id':             f"jkbms_{key.lower()}_{i + 1}",
-                        'name':           f"BMS {prefix} {i + 1}",
+                        'name':           f"{prefix} {i + 1}",
                         'unit':           unit,
                         'device_class':   class_map.get(unit),
                         'value_template': f"{{{{ value_json.{key}[{i}] }}}}",
@@ -373,7 +373,7 @@ class JKBMSClient(BaseModbusClient):
                 unit = reg.get('unit')
                 sensors.append({
                     'id':             f"jkbms_{key.lower()}",
-                    'name':           f"BMS {key.replace('_', ' ').title()}",
+                    'name':           key.replace('_', ' ').title(),
                     'unit':           unit,
                     'device_class':   class_map.get(unit),
                     'value_template': f"{{{{ value_json.{key} }}}}",
@@ -381,16 +381,16 @@ class JKBMSClient(BaseModbusClient):
 
         sensors += [
             {
-                'id': 'jkbms_parsed_alarms', 'name': 'BMS Active Alarms',
+                'id': 'jkbms_parsed_alarms', 'name': 'Active Alarms',
                 'value_template': '{{ value_json.PARSED_ALARMS | join(", ") }}'
             },
             {
-                'id': 'jkbms_charging_power', 'name': 'BMS Charging Power',
+                'id': 'jkbms_charging_power', 'name': 'Charging Power',
                 'unit': 'W', 'device_class': 'power',
                 'value_template': '{{ value_json.CHARGING_POWER }}'
             },
             {
-                'id': 'jkbms_discharging_power', 'name': 'BMS Discharging Power',
+                'id': 'jkbms_discharging_power', 'name': 'Discharging Power',
                 'unit': 'W', 'device_class': 'power',
                 'value_template': '{{ value_json.DISCHARGING_POWER }}'
             },

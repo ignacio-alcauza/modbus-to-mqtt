@@ -43,8 +43,6 @@ DEYE_HYBRID_REGISTERS = {
             {"name": "RADIATOR_TEMP", "address": 111, "count": 1, "type": "I16", "gain": 100, "unit": "°C"},
             {"name": "PV1_VOLTAGE", "address": 109, "count": 1, "type": "U16", "gain": 10, "unit": "V"},
             {"name": "PV1_CURRENT", "address": 110, "count": 1, "type": "U16", "gain": 10, "unit": "A"},
-            {"name": "PV2_VOLTAGE", "address": 111, "count": 1, "type": "U16", "gain": 10, "unit": "V"},
-            {"name": "PV2_CURRENT", "address": 112, "count": 1, "type": "U16", "gain": 10, "unit": "A"},
             {"name": "GRID_L1_VOLTAGE", "address": 150, "count": 1, "type": "U16", "gain": 10, "unit": "V"},
         ]
     },
@@ -184,7 +182,7 @@ class DeyeInverterClient(BaseModbusClient):
                 
                 sensors.append({
                     'id':             f"deye_{name.lower()}",
-                    'name':           f"Inverter {name.replace('_', ' ').title()}",
+                    'name':           name.replace('_', ' ').title(),
                     'unit':           unit,
                     'device_class':   dclass,
                     'state_class': 'total_increasing' if unit == 'kWh' else 'measurement',
