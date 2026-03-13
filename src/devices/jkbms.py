@@ -38,23 +38,23 @@ REGISTERS = {
 
     # ── Estadísticas de Celdas (v27 reality: 0x1220 range) ───────────────────
     'CELL_AVG_VOLTAGE': {
-        'addr': 0x1222,
+        'addr': 0x1242,
         'type': 'UINT16',
         'unit': 'V',
         'scale': 0.001,
     },
     'CELL_VOLT_DIFF': {
-        'addr': 0x1225,
+        'addr': 0x1243,
         'type': 'UINT16',
         'unit': 'V',
         'scale': 0.001,
     },
     'CELL_MAX_NO': {
-        'addr': 0x123B,     # Empírico v27: byte bajo
+        'addr': 0x123B,     # Manteniendo direcciones previas para Max/Min No por ahora
         'type': 'UINT8_LOW',
     },
     'CELL_MIN_NO': {
-        'addr': 0x123C,     # Empírico v27: byte alto
+        'addr': 0x123C,
         'type': 'UINT8_HIGH',
     },
 
