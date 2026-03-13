@@ -92,7 +92,11 @@ REGISTERS = {
     },
 }
 
-class DeyeClient(BaseModbusClient):
+class DeyeInverterClient(BaseModbusClient):
+    def __init__(self, host: str, port: int = 502, unit_id: int = 1, model: str = None, **kwargs):
+        super().__init__(host, port, unit_id, **kwargs)
+        self.model = model
+
     def get_all_data(self) -> dict:
         data = {}
         mem = {}
