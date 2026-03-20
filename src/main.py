@@ -76,10 +76,8 @@ def main():
     
     # Init devices based on config
     
-    # Get base MQTT topic
     broker_conf = config.get("broker-mqtt", {})
-    base_topic = broker_conf.get("homeassistant_mqtt_topic", "homeassistant")
-    
+
     jkbms_conf = config.get("jkbms", {})
     if jkbms_conf.get("active", False):
         jkbms = JKBMSV2Client(
@@ -87,20 +85,21 @@ def main():
             port=jkbms_conf.get("modbus_port", 502),
             unit_id=jkbms_conf.get("modbus_unit", 1)
         )
-        
-        # Build topic dynamically with /state
+
         subtopic = jkbms_conf.get("mqtt_subtopic", "jkbms")
-        full_topic = f"{base_topic}/{subtopic}/state"
-        
+        state_topic = f"{subtopic}/state"
+        availability_topic = f"{subtopic}/availability"
+
         devices.append({
             "name": "jkbms",
             "client": jkbms,
-            "topic": full_topic,
+            "topic": state_topic,
+            "availability_topic": availability_topic,
             "interval": jkbms_conf.get("query_seconds", 30),
             "debug": jkbms_conf.get("debug_values", False),
             "last_run": 0
         })
-        logger.info(f"Initialized JKBMS V2 at {jkbms.host}:{jkbms.port} (Topic: {full_topic}, Debug: {jkbms_conf.get('debug_values', False)})")
+        logger.info(f"Initialized JKBMS V2 at {jkbms.host}:{jkbms.port} → state: {state_topic}")
 
     deye_conf = config.get("deye_inverter", {})
     if deye_conf.get("active", False):
@@ -110,22 +109,23 @@ def main():
             unit_id=deye_conf.get("modbus_unit", 1),
             model=deye_conf.get("model")
         )
-        
-        # Build topic dynamically with /state
+
         subtopic = deye_conf.get("mqtt_subtopic", "deye_inverter")
-        full_topic = f"{base_topic}/{subtopic}/state"
-        
+        state_topic = f"{subtopic}/state"
+        availability_topic = f"{subtopic}/availability"
+
         devices.append({
             "name": "deye_inverter",
             "client": deye,
-            "topic": full_topic,
+            "topic": state_topic,
+            "availability_topic": availability_topic,
             "interval": deye_conf.get("query_seconds", 30),
             "debug": deye_conf.get("debug_values", False),
             "firmware_version": deye_conf.get("firmware_version", deye_conf.get("software_version")),
             "hardware_version": deye_conf.get("hardware_version"),
             "last_run": 0
         })
-        logger.info(f"Initialized Deye Inverter at {deye.host}:{deye.port} (Topic: {full_topic}, Debug: {deye_conf.get('debug_values', False)})")
+        logger.info(f"Initialized Deye Inverter at {deye.host}:{deye.port} → state: {state_topic}")
 
     if not devices:
         logger.warning("No active devices found in config.yml. Exiting.")
@@ -133,32 +133,13 @@ def main():
 
     # Publish MQTT Discovery Configs for Home Assistant
     discovery_prefix = broker_conf.get("discovery_prefix", "homeassistant")
+    node_id = broker_conf.get("node_id", "modbus2mqtt")
     for dev in devices:
         sensors = dev["client"].get_discovery_sensors()
         if sensors:
-            # Create a unique device ID without slashes so HA discovery doesn't break
-            # Node ID must be alphanumeric and underscore
-            node_name = base_topic.split("/")[-1] if "/" in base_topic else base_topic
-            device_id = f"{node_name}_{dev['name']}"
-            
-            # Augment sensors with hardware and firmware if present
-            if dev.get("firmware_version"):
-                sensors.append({
-                    "id": "firmware_version",
-                    "name": "Firmware Version",
-                    "value_template": "{{ value_json.FIRMWARE_VERSION }}",
-                    "device_class": None
-                })
-            if dev.get("hardware_version"):
-                sensors.append({
-                    "id": "hardware_version",
-                    "name": "Hardware Version",
-                    "value_template": "{{ value_json.HARDWARE_VERSION }}",
-                    "device_class": None
-                })
-            
-            logger.info(f"Publishing HA Discovery for {dev['name']} ({len(sensors)} sensors)")
+            device_id = f"{node_id}_{dev['name']}"
 
+            logger.info(f"Publishing HA Discovery for {dev['name']} ({len(sensors)} sensors)")
             try:
                 publisher.publish_discovery(
                     device_id=device_id,
@@ -166,9 +147,10 @@ def main():
                     state_topic=dev["topic"],
                     sensors=sensors,
                     discovery_prefix=discovery_prefix,
-                    node_id=node_name,
+                    node_id=node_id,
                     sw_version=dev.get("firmware_version"),
-                    hw_version=dev.get("hardware_version")
+                    hw_version=dev.get("hardware_version"),
+                    availability_topic=dev["availability_topic"],
                 )
             except Exception as e:
                 logger.error(f"Failed to publish discovery for {dev['name']}: {e}")
@@ -194,31 +176,25 @@ def main():
                 if current_time - dev["last_run"] >= dev["interval"]:
                     logger.debug(f"Querying {dev['name']}...")
                     client = dev["client"]
-                    
+
                     try:
                         with client:
                             data = client.get_all_data()
                             if data:
-                                # Write debug file (includes _raw_data)
                                 if dev["debug"]:
                                     write_debug_file(dev["name"], data)
-                                
-                                # Remove _raw_data before sending to MQTT
+
                                 data.pop("_raw_data", None)
-                                
-                                # Inject static version config into data payload
-                                if dev.get("firmware_version"):
-                                    data["FIRMWARE_VERSION"] = str(dev["firmware_version"])
-                                if dev.get("hardware_version"):
-                                    data["HARDWARE_VERSION"] = str(dev["hardware_version"])
-                                
-                                # Send data to MQTT
+
+                                publisher.publish_raw(dev["availability_topic"], "online", retain=True)
                                 publisher.publish_data(dev["topic"], data)
                             else:
                                 logger.warning(f"No data received from {dev['name']}")
+                                publisher.publish_raw(dev["availability_topic"], "offline", retain=True)
                     except Exception as e:
                         logger.error(f"Error querying {dev['name']}: {e}")
-                        
+                        publisher.publish_raw(dev["availability_topic"], "offline", retain=True)
+
                     dev["last_run"] = time.time()
                     
             time.sleep(1)

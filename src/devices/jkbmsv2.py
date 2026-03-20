@@ -191,19 +191,24 @@ CONFIG_FLAG_BITS = {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 REALTIME_REGISTERS = {
-    # Celdas y estadísticas
-    'CELL_VOL_AVE':       {'addr': 0x1222, 'type': 'UINT16', 'unit': 'mV',    'scale': 1,    'desc': 'Voltaje promedio de celdas'},
-    'CELL_VDIF_MAX':      {'addr': 0x1223, 'type': 'UINT16', 'unit': 'mV',    'scale': 1,    'desc': 'Diferencia máxima voltaje'},
-    'MAX_VOL_CELL_NBR':   {'addr': 0x1224, 'type': 'UINT8_HIGH', 'unit': '',  'scale': 1,    'desc': 'Nº celda voltaje máximo'},
-    'MIN_VOL_CELL_NBR':   {'addr': 0x1224, 'type': 'UINT8_LOW',  'unit': '',  'scale': 1,    'desc': 'Nº celda voltaje mínimo'},
+    # Celdas y estadísticas (confirmados FW v27 desde página 0x1240)
+    'CELL_STA':           {'addr': 0x1240, 'type': 'UINT32', 'unit': 'bitmask','scale': 1,   'desc': 'Bitmask: BIT[n]=1 → celda n presente'},
+    'CELL_VOL_AVE':       {'addr': 0x1242, 'type': 'UINT16', 'unit': 'V',     'scale': 0.001,'desc': 'Voltaje promedio de celdas'},
+    'CELL_VDIF_MAX':      {'addr': 0x1243, 'type': 'UINT16', 'unit': 'V',     'scale': 0.001,'desc': 'Diferencia máxima voltaje'},
+    'MAX_VOL_CELL_NBR':   {'addr': 0x1244, 'type': 'UINT8_HIGH', 'unit': '',  'scale': 1,    'desc': 'Nº celda voltaje máximo'},
+    'MIN_VOL_CELL_NBR':   {'addr': 0x1244, 'type': 'UINT8_LOW',  'unit': '',  'scale': 1,    'desc': 'Nº celda voltaje mínimo'},
 
     # Temperaturas (confirmadas v27 por sondeo empírico)
     'TEMP_MOS':           {'addr': 0x1285, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura placa MOS'},
-    'TEMP_BAT1':          {'addr': 0x128E, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 1'},
-    'TEMP_BAT2':          {'addr': 0x128F, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 2'},
-    'TEMP_BAT3':          {'addr': 0x12BC, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 3'},
-    'TEMP_BAT4':          {'addr': 0x12BD, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 4'},
-    'TEMP_BAT5':          {'addr': 0x12BE, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 5'},
+    # TEMP_BAT1/2: deben leerse desde página 0x1288 (ver override en read_realtime_block).
+    # Desde página 0x1288 aparecen en 0x1292 (offset 10) y 0x1293 (offset 11).
+    'TEMP_BAT1':          {'addr': 0x1292, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 1'},
+    'TEMP_BAT2':          {'addr': 0x1293, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 2'},
+    # TEMP_BAT3: sensor no conectado en este hardware (siempre 0°C), deshabilitado.
+    # TEMP_BAT4/5: requieren página 0x12E0 (ver override en read_realtime_block).
+    # Desde página 0x12E0: TEMP_MOS en offset 12 (0x12EC), T4 offset 13 (0x12ED), T5 offset 14 (0x12EE).
+    'TEMP_BAT4':          {'addr': 0x12ED, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 4'},
+    'TEMP_BAT5':          {'addr': 0x12EE, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 5'},
 
     # Pack (confirmados v27)
     'BAT_VOL':            {'addr': 0x1289, 'type': 'UINT16', 'unit': 'V',     'scale': 0.001,'desc': 'Voltaje total de batería'},
@@ -212,17 +217,19 @@ REALTIME_REGISTERS = {
     # Balanceo (confirmados v27)
     'BALAN_CURRENT':      {'addr': 0x1286, 'type': 'INT16',  'unit': 'A',     'scale': 0.001,'desc': 'Corriente de balanceo'},
 
-    # SOC / Capacidad / Ciclos (confirmados v27)
-    'SOC':                {'addr': 0x1293, 'type': 'UINT8_LOW', 'unit': '%',  'scale': 1,    'desc': 'Estado de carga SOC'},
-    'BALAN_STA':          {'addr': 0x1293, 'type': 'UINT8_HIGH','unit': '',   'scale': 1,    'desc': 'Estado balanceo (2=desc, 1=carga, 0=off)'},
-    'SOC_CAP_REMAIN':     {'addr': 0x1294, 'type': 'UINT32', 'unit': 'Ah',    'scale': 0.001,'desc': 'Capacidad restante'},
-    'SOC_FULL_CHARGE_CAP':{'addr': 0x1296, 'type': 'UINT32', 'unit': 'Ah',    'scale': 0.001,'desc': 'Capacidad carga completa actual'},
-    'SOC_CYCLE_CAP':      {'addr': 0x12B4, 'type': 'UINT32', 'unit': 'Ah',    'scale': 0.001,'desc': 'Capacidad total acumulada en ciclos'},
+    # SOC / Capacidad / Ciclos (confirmados v27 en página 0x12A0)
+    # NOTA: el BMS usa lectura por páginas — la dirección de inicio del request
+    # determina qué datos devuelve. Estos valores son correctos desde range (0x12A0, 16).
+    'SOC':                {'addr': 0x12A3, 'type': 'UINT8_LOW', 'unit': '%',  'scale': 1,    'desc': 'Estado de carga SOC'},
+    'BALAN_STA':          {'addr': 0x12A3, 'type': 'UINT8_HIGH','unit': '',   'scale': 1,    'desc': 'Estado balanceo (2=desc, 1=carga, 0=off)'},
+    'SOC_CAP_REMAIN':     {'addr': 0x12A4, 'type': 'UINT32', 'unit': 'Ah',    'scale': 0.001,'desc': 'Capacidad restante'},
+    'SOC_FULL_CHARGE_CAP':{'addr': 0x12A6, 'type': 'UINT32', 'unit': 'Ah',    'scale': 0.001,'desc': 'Capacidad carga completa actual'},
     'SOC_CYCLE_COUNT':    {'addr': 0x12B6, 'type': 'UINT16', 'unit': '',      'scale': 1,    'desc': 'Número de ciclos'},
+    'SOC_CYCLE_CAP':      {'addr': 0x12B7, 'type': 'UINT16', 'unit': 'Ah',    'scale': 0.1,  'desc': 'Capacidad total acumulada en ciclos'},
 
-    # Estado carga/descarga (confirmado v27 en 0x12A0)
-    'CHARGE_STA':       {'addr': 0x12A0, 'type': 'UINT8_LOW',  'unit': 'bool', 'scale': 1, 'desc': 'Estado de carga activa'},
-    'DISCHARGE_STA':    {'addr': 0x12A0, 'type': 'UINT8_HIGH', 'unit': 'bool', 'scale': 1, 'desc': 'Estado de descarga activa'},
+    # Estado carga/descarga (confirmado v27 en página 0x12B0)
+    'CHARGE_STA':       {'addr': 0x12B8, 'type': 'UINT8_LOW',  'unit': 'bool', 'scale': 1, 'desc': 'Carga habilitada (1=ON)'},
+    'DISCHARGE_STA':    {'addr': 0x12B8, 'type': 'UINT8_HIGH', 'unit': 'bool', 'scale': 1, 'desc': 'Descarga habilitada (1=ON)'},
 
 
     # Runtime (confirmado v27)
@@ -339,7 +346,17 @@ class JKBMSV2Client(BaseModbusClient):
 
     def read_config_block(self):
         """Lee y decodifica el bloque 0x1000 (configuración)."""
-        mem = self._read_block(0x1000, 0x8E)  # 0x1000 a 0x108D
+        # CRÍTICO: usar chunk_size=68 para que el primer request cubra 0x1000-0x1043
+        # en una sola lectura. Si se usan chunks de 16, cada chunk inicia una nueva
+        # "página" en el BMS y devuelve datos incorrectos para esa dirección.
+        mem = self._read_block(0x1000, 0x8E, chunk_size=68)  # 0x1000 a 0x108D
+
+        # Override: 0x1084-0x108D requieren lectura desde su propia página
+        # (el segundo chunk de _read_block arranca en 0x1044 → página incorrecta)
+        page1084 = self.read_holding_registers(0x1084, 10)
+        if page1084:
+            for i, v in enumerate(page1084):
+                mem[0x1084 + i] = v
 
         data = {}
         for key, reg in CONFIG_REGISTERS.items():
@@ -373,12 +390,10 @@ class JKBMSV2Client(BaseModbusClient):
             (0x1200, 16),   # Voltajes celdas 1-16 (CRÍTICO: 16 exactos)
             (0x1220, 16),   # Stats celdas (AVE, DIFF, MAX/MIN)
             (0x1240, 16),   # Más stats
-            (0x124D, 16),   # Resistencias celdas 1-16 (CRÍTICO: 16 exactos)
             (0x1260, 32),   # Otros extras
-            (0x1280, 16),   # MOS temp, Bat Vol
-            (0x128E, 16),   # Temps T1-T2 y Corriente
-            (0x12A0, 16),   # Alarmas, etc.
-            (0x12B0, 16),   # Ciclos, Tiempos, T3-T5
+            (0x1280, 16),   # MOS temp, Bat Vol, BAT_CURRENT (página 0x1280)
+            (0x12A0, 16),   # Alarmas, SOC, capacidades (página 0x12A0)
+            (0x12B0, 16),   # Ciclos, SOC_CYCLE_CAP (página 0x12B0)
             (0x12C0, 16),   # Timers recovery
             (0x12F0, 8),    # Diagnóstico ticks
         ]
@@ -386,6 +401,31 @@ class JKBMSV2Client(BaseModbusClient):
             # Forzamos lectura individual o bloque pequeño
             block = self._read_block(start, count, chunk_size=count)
             mem.update(block)
+
+        # Resistencias de celdas: requieren página 0x124A (16 valores en 0x124A-0x1259).
+        page124A = self.read_holding_registers(0x124A, 16)
+        if page124A:
+            for i, v in enumerate(page124A):
+                mem[0x124A + i] = v
+
+        # TEMP_BAT4/5 requieren página 0x12E0: offset 13 (0x12ED) y 14 (0x12EE).
+        page12E0 = self.read_holding_registers(0x12E0, 16)
+        if page12E0:
+            for offset, abs_addr in enumerate(range(0x12E0, 0x12E0 + 16)):
+                if abs_addr in (0x12ED, 0x12EE):
+                    mem[abs_addr] = page12E0[offset]
+
+        # TEMP_BAT1/2 y RUNTIME requieren página 0x1288 (confirmado FW v27).
+        # El BMS usa paginación: arrancar en 0x1288 causa que los datos aparezcan
+        # en direcciones absolutas 4 posiciones más altas que desde página 0x1280.
+        # TEMP_BAT1 (interno índice 14) → 0x1292 (offset 10 desde 0x1288)
+        # TEMP_BAT2 (interno índice 15) → 0x1293 (offset 11 desde 0x1288)
+        # RUNTIME   (interno índice 26) → 0x129E-0x129F (offset 22-23 desde 0x1288)
+        page1288 = self.read_holding_registers(0x1288, 24)
+        if page1288:
+            for offset, abs_addr in enumerate(range(0x1288, 0x1288 + 24)):
+                if abs_addr in (0x1292, 0x1293, 0x129E, 0x129F):
+                    mem[abs_addr] = page1288[offset]
 
         data = {}
 
@@ -398,12 +438,13 @@ class JKBMSV2Client(BaseModbusClient):
         if cell_voltages:
             data['CELL_VOLTAGES'] = cell_voltages
 
-        # Resistencias de celdas (confirmado v27: 0x124D, stride 1, UINT16)
+        # Resistencias de celdas (confirmado v27: página 0x124A, 16 valores consecutivos)
+        # Scale 0.001 → valores en mΩ (ej: raw 65 → 0.065 mΩ)
         cell_res = []
         for i in range(self.NUM_CELLS):
-            v = mem.get(0x124D + i)
+            v = mem.get(0x124A + i)
             if v is not None:
-                cell_res.append(v)
+                cell_res.append(round(v * 0.001, 3))
         if cell_res:
             data['CELL_RESISTANCES'] = cell_res
 
@@ -439,7 +480,8 @@ class JKBMSV2Client(BaseModbusClient):
 
     def read_device_info_block(self):
         """Lee y decodifica el bloque 0x1400 (información del dispositivo)."""
-        mem = self._read_block(0x1400, 0x48)  # 0x1400 a 0x1447
+        # chunk_size=72 → una sola petición desde página 0x1400 (evita paginación)
+        mem = self._read_block(0x1400, 0x48, chunk_size=72)  # 0x1400 a 0x1447
 
         data = {}
         for key, reg in DEVICE_INFO_REGISTERS.items():
@@ -574,7 +616,7 @@ class JKBMSV2Client(BaseModbusClient):
                 'name': f'Cell Resistance {i+1}',
                 'unit': 'mΩ',
                 'state_class': 'measurement',
-                'value_template': f"{{{{ value_json.CELL_RESISTANCES[{i}] | float / 1000.0 }}}}"
+                'value_template': f"{{{{ value_json.CELL_RESISTANCES[{i}] }}}}"
             })
 
         return sensors
