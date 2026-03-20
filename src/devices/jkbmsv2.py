@@ -564,7 +564,7 @@ class JKBMSV2Client(BaseModbusClient):
         extra_sensors = [
             {'id': 'alarms_decoded', 'name': 'Active Alarms', 'value_template': '{{ value_json.ALARMS_DECODED | join(", ") }}'},
             {'id': 'balan_sta_text', 'name': 'Balance Status', 'value_template': '{{ value_json.BALAN_STA_TEXT }}'},
-            {'id': 'runtime_text',   'name': 'Runtime', 'value_template': '{{ value_json.RUNTIME_TEXT }}'},
+            {'id': 'runtime_text',   'name': 'Uptime', 'value_template': '{{ value_json.ODD_RUN_TIME_TEXT }}'},
             {'id': 'bat_power_w',    'name': 'Battery Power', 'unit': 'W', 'device_class': 'power', 'state_class': 'measurement', 'value_template': '{{ value_json.BAT_POWER_W }}'},
             {'id': 'charging_power', 'name': 'Charging Power', 'unit': 'W', 'device_class': 'power', 'state_class': 'measurement', 'value_template': '{{ value_json.CHARGING_POWER }}'},
             {'id': 'discharging_power', 'name': 'Discharging Power', 'unit': 'W', 'device_class': 'power', 'state_class': 'measurement', 'value_template': '{{ value_json.DISCHARGING_POWER }}'}
