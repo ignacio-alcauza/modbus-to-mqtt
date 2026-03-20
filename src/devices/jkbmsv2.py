@@ -198,15 +198,12 @@ REALTIME_REGISTERS = {
     'MIN_VOL_CELL_NBR':   {'addr': 0x1224, 'type': 'UINT8_LOW',  'unit': '',  'scale': 1,    'desc': 'Nº celda voltaje mínimo'},
 
     # Temperaturas (confirmadas v27 por sondeo empírico)
-    # NOTA: 0x1296+0x1297 son SOC_FULL_CHARGE_CAP (UINT32) — NO temperatura.
-    # Sensores reales confirmados:
     'TEMP_MOS':           {'addr': 0x1285, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura placa MOS'},
-    'TEMP_BAT1':          {'addr': 0x128A, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 1'},
-    'TEMP_BAT2':          {'addr': 0x128E, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 2'},
-    'TEMP_BAT3':          {'addr': 0x128F, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 3'},
-    # Sensores 4/5 no detectados empíricamente a estas direcciones (leen 0)
-    # 'TEMP_BAT4':        {'addr': 0x12BC, 'type': 'INT16',  ...},
-    # 'TEMP_BAT5':        {'addr': 0x12BE, 'type': 'INT16',  ...},
+    'TEMP_BAT1':          {'addr': 0x128E, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 1'},
+    'TEMP_BAT2':          {'addr': 0x128F, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 2'},
+    'TEMP_BAT3':          {'addr': 0x12BC, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 3'},
+    'TEMP_BAT4':          {'addr': 0x12BD, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 4'},
+    'TEMP_BAT5':          {'addr': 0x12BE, 'type': 'INT16',  'unit': '0.1°C', 'scale': 0.1,  'desc': 'Temperatura batería sensor 5'},
 
     # Pack (confirmados v27)
     'BAT_VOL':            {'addr': 0x1289, 'type': 'UINT16', 'unit': 'V',     'scale': 0.001,'desc': 'Voltaje total de batería'},
@@ -558,6 +555,16 @@ class JKBMSV2Client(BaseModbusClient):
                 'device_class': 'voltage',
                 'state_class': 'measurement',
                 'value_template': f"{{{{ value_json.CELL_VOLTAGES[{i}] }}}}"
+            })
+
+        # 6. Resistencias de celdas (16 celdas)
+        for i in range(self.NUM_CELLS):
+            sensors.append({
+                'id': f'cell_resistance_{i+1}',
+                'name': f'Cell Resistance {i+1}',
+                'unit': 'mΩ',
+                'state_class': 'measurement',
+                'value_template': f"{{{{ value_json.CELL_RESISTANCES[{i}] | float / 1000.0 }}}}"
             })
 
         return sensors
