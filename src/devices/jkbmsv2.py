@@ -220,11 +220,9 @@ REALTIME_REGISTERS = {
     'SOC_CYCLE_CAP':      {'addr': 0x12B4, 'type': 'UINT32', 'unit': 'Ah',    'scale': 0.001,'desc': 'Capacidad total acumulada en ciclos'},
     'SOC_CYCLE_COUNT':    {'addr': 0x12B6, 'type': 'UINT16', 'unit': '',      'scale': 1,    'desc': 'Número de ciclos'},
 
-    # Estado carga/descarga: 0x12B8 NO es un registro estable.
-    # Lectura directa: 0x0101 (ambos ON). Durante carga activa: 0x6400 (HI=100=SOC, LO=0).
-    # El registro parece cambiar de contenido según modo de operación. No confirmado.
-    # 'CHARGE_STA':       {'addr': 0x12B8, 'type': 'UINT8_LOW',  'unit': 'bool', 'scale': 1, 'desc': 'Estado carga (1=activo)'},
-    # 'DISCHARGE_STA':    {'addr': 0x12B8, 'type': 'UINT8_HIGH', 'unit': 'bool', 'scale': 1, 'desc': 'Estado descarga (1=activo)'},
+    # Estado carga/descarga (confirmado v27 en 0x12A0)
+    'CHARGE_STA':       {'addr': 0x12A0, 'type': 'UINT8_LOW',  'unit': 'bool', 'scale': 1, 'desc': 'Estado de carga activa'},
+    'DISCHARGE_STA':    {'addr': 0x12A0, 'type': 'UINT8_HIGH', 'unit': 'bool', 'scale': 1, 'desc': 'Estado de descarga activa'},
 
 
     # Runtime (confirmado v27)
@@ -310,12 +308,15 @@ class JKBMSV2Client(BaseModbusClient):
 
     NUM_CELLS = 16
 
-    def _read_block(self, start_addr, word_count):
-        """Lee un bloque de registros y devuelve dict {addr: value}."""
+    def _read_block(self, start_addr, word_count, chunk_size=16):
+        """
+        Lee un bloque de registros y devuelve dict {addr: value}.
+        Usa fragmentos de 16 palabras por defecto (más robusto en v27).
+        """
         mem = {}
-        for offset in range(0, word_count, 64):
-            chunk_count = min(64, word_count - offset)
-            regs = self.read_holding_registers(start_addr + offset, chunk_count)
+        for offset in range(0, word_count, chunk_size):
+            actual_count = min(chunk_size, word_count - offset)
+            regs = self.read_holding_registers(start_addr + offset, actual_count)
             if regs:
                 for i, v in enumerate(regs):
                     mem[start_addr + offset + i] = v
@@ -366,16 +367,24 @@ class JKBMSV2Client(BaseModbusClient):
 
     def read_realtime_block(self):
         """Lee y decodifica el bloque 0x1200 (datos en tiempo real)."""
-        # Leer en sub-bloques para cubrir todo el rango necesario
+        # Leer en sub-bloques de 16 para evitar solapamiento de datos en el BMS
         mem = {}
         ranges = [
-            (0x1200, 64),   # Celdas + stats (0x1200-0x123F)
-            (0x1240, 64),   # Resistencias + extras (0x1240-0x127F)
-            (0x1280, 64),   # MOS temp, bat current, etc (0x1280-0x12BF)
-            (0x12C0, 64),   # Recovery timers, etc (0x12C0-0x12FF)
+            (0x1200, 16),   # Voltajes celdas 1-16 (CRÍTICO: 16 exactos)
+            (0x1220, 16),   # Stats celdas (AVE, DIFF, MAX/MIN)
+            (0x1240, 16),   # Más stats
+            (0x124D, 16),   # Resistencias celdas 1-16 (CRÍTICO: 16 exactos)
+            (0x1260, 32),   # Otros extras
+            (0x1280, 16),   # MOS temp, Bat Vol
+            (0x128E, 16),   # Temps T1-T2 y Corriente
+            (0x12A0, 16),   # Alarmas, etc.
+            (0x12B0, 16),   # Ciclos, Tiempos, T3-T5
+            (0x12C0, 16),   # Timers recovery
+            (0x12F0, 8),    # Diagnóstico ticks
         ]
         for start, count in ranges:
-            block = self._read_block(start, count)
+            # Forzamos lectura individual o bloque pequeño
+            block = self._read_block(start, count, chunk_size=count)
             mem.update(block)
 
         data = {}
@@ -520,21 +529,22 @@ class JKBMSV2Client(BaseModbusClient):
         ]
         sensors.extend(extra_sensors)
 
-        # 3. Sensores Binarios (Config Switches)
+        # 3. Sensores Binarios (Config Switches + Realtime Status)
         binary_switches = [
             {'key': 'BAT_CHARGE_EN',    'name': 'Charge Switch'},
             {'key': 'BAT_DISCHARGE_EN', 'name': 'Discharge Switch'},
-            {'key': 'BALAN_EN',         'name': 'Balance Switch'}
+            {'key': 'BALAN_EN',         'name': 'Balance Switch'},
+            {'key': 'CHARGE_STA',       'name': 'Charging Active'},
+            {'key': 'DISCHARGE_STA',    'name': 'Discharging Active'}
         ]
         for b in binary_switches:
             sensors.append({
                 'id': b['key'].lower(),
                 'name': b['name'],
                 'component': 'binary_sensor',
-                'device_class': 'connectivity', # o None
-                'payload_on': 1,
-                'payload_off': 0,
-                'value_template': f"{{{{ value_json.{b['key']} }}}}"
+                'payload_on': 'ON',
+                'payload_off': 'OFF',
+                'value_template': f"{{{{ 'ON' if value_json.{b['key']} == 1 else 'OFF' }}}}"
             })
 
         # 4. Info del Dispositivo (Serial, Versiones)
