@@ -40,7 +40,7 @@ DEYE_HYBRID_REGISTERS = {
         "base": 100,
         "count": 55,
         "registers": [
-            {"name": "RADIATOR_TEMP", "address": 111, "count": 1, "type": "I16", "gain": 100, "unit": "°C"},
+            {"name": "RADIATOR_TEMP", "address": 111, "count": 1, "type": "I16", "gain": 10, "unit": "°C"},
             {"name": "PV1_VOLTAGE", "address": 109, "count": 1, "type": "U16", "gain": 10, "unit": "V"},
             {"name": "PV1_CURRENT", "address": 110, "count": 1, "type": "U16", "gain": 10, "unit": "A"},
             {"name": "GRID_L1_VOLTAGE", "address": 150, "count": 1, "type": "U16", "gain": 10, "unit": "V"},
@@ -52,7 +52,7 @@ DEYE_HYBRID_REGISTERS = {
         "registers": [
             {"name": "GRID_L1_POWER", "address": 166, "count": 1, "type": "I16", "unit": "W"},
             {"name": "GRID_TOTAL_POWER", "address": 169, "count": 1, "type": "I16", "unit": "W"},
-            {"name": "LOAD_L1_POWER", "address": 172, "count": 1, "type": "U16", "unit": "W"},
+            {"name": "LOAD_L1_POWER", "address": 173, "count": 1, "type": "U16", "unit": "W"},
             {"name": "LOAD_TOTAL_POWER", "address": 175, "count": 1, "type": "U16", "unit": "W"},
             {"name": "BATTERY_TEMP", "address": 182, "count": 1, "type": "I16", "gain": 10, "unit": "°C"},
             {"name": "BATTERY_VOLTAGE", "address": 183, "count": 1, "type": "U16", "gain": 100, "unit": "V"},
