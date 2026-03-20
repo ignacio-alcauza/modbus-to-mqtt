@@ -153,7 +153,7 @@ REGISTERS = {
         'scale': 0.001,
     },
     'CYCLE_COUNT': {
-        'addr': 0x1292,     # De sonda: 0x1292=24 (probable ciclo count)
+        'addr': 0x12B1,     # De sonda v27: 0x12B1 es estable (val=1), 0x1292 salta (peak current/status?)
         'type': 'UINT16',
     },
 

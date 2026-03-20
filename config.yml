@@ -7,7 +7,7 @@ broker-mqtt:
 
 jkbms:
   active: true
-  mqtt_subtopic: jkbms
+  mqtt_subtopic: jkbms_pre
   modbus_ip: 192.168.1.136
   modbus_port: 502
   modbus_unit: 1

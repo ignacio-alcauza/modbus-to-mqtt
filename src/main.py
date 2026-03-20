@@ -8,7 +8,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from utils.logger import configure_logging
-from devices.jkbms import JKBMSClient
+from devices.jkbmsv2 import JKBMSV2Client
 from devices.deye import DeyeInverterClient
 from mqtt.publisher import MQTTPublisher
 
@@ -82,7 +82,7 @@ def main():
     
     jkbms_conf = config.get("jkbms", {})
     if jkbms_conf.get("active", False):
-        jkbms = JKBMSClient(
+        jkbms = JKBMSV2Client(
             host=jkbms_conf.get("modbus_ip"),
             port=jkbms_conf.get("modbus_port", 502),
             unit_id=jkbms_conf.get("modbus_unit", 1)
@@ -98,11 +98,9 @@ def main():
             "topic": full_topic,
             "interval": jkbms_conf.get("query_seconds", 30),
             "debug": jkbms_conf.get("debug_values", False),
-            "firmware_version": jkbms_conf.get("firmware_version", jkbms_conf.get("software_version")),
-            "hardware_version": jkbms_conf.get("hardware_version"),
             "last_run": 0
         })
-        logger.info(f"Initialized JKBMS at {jkbms.host}:{jkbms.port} (Topic: {full_topic}, Debug: {jkbms_conf.get('debug_values', False)})")
+        logger.info(f"Initialized JKBMS V2 at {jkbms.host}:{jkbms.port} (Topic: {full_topic}, Debug: {jkbms_conf.get('debug_values', False)})")
 
     deye_conf = config.get("deye_inverter", {})
     if deye_conf.get("active", False):

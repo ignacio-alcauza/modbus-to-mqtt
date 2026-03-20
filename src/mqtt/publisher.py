@@ -64,15 +64,17 @@ class MQTTPublisher:
             device_info["hw_version"] = str(hw_version)
         
         for sensor in sensors:
+            # Component type (sensor, binary_sensor, etc.)
+            component = sensor.get('component', 'sensor')
+            
             # Topic format: <discovery_prefix>/<component>/<node_id>/<object_id>/config
-            # Home Assistant strict regex: node_id and object_id cannot contain slashes.
             if node_id:
                 safe_node_id = node_id.replace("/", "_")
                 object_id = f"{device_name.lower().replace(' ', '_')}_{sensor['id']}"
-                discovery_topic = f"{discovery_prefix}/sensor/{safe_node_id}/{object_id}/config"
+                discovery_topic = f"{discovery_prefix}/{component}/{safe_node_id}/{object_id}/config"
             else:
                 safe_device_id = device_id.replace("/", "_")
-                discovery_topic = f"{discovery_prefix}/sensor/{safe_device_id}/{sensor['id']}/config"
+                discovery_topic = f"{discovery_prefix}/{component}/{safe_device_id}/{sensor['id']}/config"
             
             logger.info(f"Publishing discovery to: {discovery_topic}")
             payload = {
