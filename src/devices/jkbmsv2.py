@@ -380,12 +380,12 @@ class JKBMSV2Client(BaseModbusClient):
 
         data = {}
 
-        # Voltajes de celdas (0x1200, stride 1, UINT16)
+        # Voltajes de celdas (0x1200, stride 1, UINT16) -> Convertir a V
         cell_voltages = []
         for i in range(self.NUM_CELLS):
             v = mem.get(0x1200 + i)
             if v is not None:
-                cell_voltages.append(v)
+                cell_voltages.append(round(v / 1000.0, 3))
         if cell_voltages:
             data['CELL_VOLTAGES'] = cell_voltages
 
@@ -551,7 +551,7 @@ class JKBMSV2Client(BaseModbusClient):
             sensors.append({
                 'id': f'cell_voltage_{i+1}',
                 'name': f'Cell Voltage {i+1}',
-                'unit': 'mV',
+                'unit': 'V',
                 'device_class': 'voltage',
                 'state_class': 'measurement',
                 'value_template': f"{{{{ value_json.CELL_VOLTAGES[{i}] }}}}"
