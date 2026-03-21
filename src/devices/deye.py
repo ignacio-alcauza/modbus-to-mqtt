@@ -41,8 +41,6 @@ DEYE_HYBRID_REGISTERS = {
         "count": 55,
         "registers": [
             {"name": "RADIATOR_TEMP", "address": 111, "count": 1, "type": "I16", "gain": 10, "unit": "°C"},
-            {"name": "PV1_VOLTAGE", "address": 109, "count": 1, "type": "U16", "gain": 10, "unit": "V"},
-            {"name": "PV1_CURRENT", "address": 110, "count": 1, "type": "U16", "gain": 10, "unit": "A"},
             {"name": "GRID_L1_VOLTAGE", "address": 150, "count": 1, "type": "U16", "gain": 10, "unit": "V"},
         ]
     },
@@ -57,7 +55,6 @@ DEYE_HYBRID_REGISTERS = {
             {"name": "BATTERY_TEMP", "address": 182, "count": 1, "type": "I16", "gain": 10, "unit": "°C"},
             {"name": "BATTERY_VOLTAGE", "address": 183, "count": 1, "type": "U16", "gain": 100, "unit": "V"},
             {"name": "BATTERY_SOC", "address": 184, "count": 1, "type": "U16", "unit": "%"},
-            {"name": "PV1_POWER", "address": 186, "count": 1, "type": "U16", "unit": "W"},
             {"name": "PV2_POWER", "address": 187, "count": 1, "type": "U16", "unit": "W"},
             {"name": "BATTERY_POWER", "address": 190, "count": 1, "type": "I16", "gain": -1, "unit": "W"},
             {"name": "BATTERY_CURRENT", "address": 191, "count": 1, "type": "I16", "gain": -100, "unit": "A"},
@@ -148,7 +145,7 @@ class DeyeInverterClient(BaseModbusClient):
                     val = self._decode_value(chunk, reg_def)
                     if val is not None:
                         # Battery temp offset fix (offset 100.0)
-                        if name == "BATTERY_TEMP" and val > 100:
+                        if name in ("BATTERY_TEMP", "RADIATOR_TEMP") and val > 100:
                             val = round(val - 100.0, 1)
                         all_data[name] = val
             
