@@ -591,8 +591,8 @@ class JKBMSV2Client(BaseModbusClient):
             })
 
         # 4. Info del Dispositivo (Serial, Versiones)
-        for key in ['MANUFACTURER_ID', 'HW_VERSION', 'SW_VERSION', 'SERIAL_NO', 'ODD_RUN_TIME_TEXT']:
-            reg = DEVICE_INFO_REGISTERS.get(key, {})
+        # ODD_RUN_TIME_TEXT se omite aquí: ya está cubierto por 'runtime_text' en extra_sensors.
+        for key in ['MANUFACTURER_ID', 'HW_VERSION', 'SW_VERSION', 'SERIAL_NO']:
             sensors.append({
                 'id': key.lower(),
                 'name': key.replace('_', ' ').title(),
