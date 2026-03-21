@@ -520,7 +520,7 @@ class JKBMSV2Client(BaseModbusClient):
         config = self.read_config_block()
         if config:
             # Solo pasamos los switches y valores de balanceo
-            for k in ['BAT_CHARGE_EN', 'BAT_DISCHARGE_EN', 'BALAN_EN', 'BALAN_START_VOL', 'CAP_BAT_CELL', 'VOL_START_BALAN']:
+            for k in ['BAT_CHARGE_EN', 'BAT_DISCHARGE_EN', 'BALAN_EN', 'CAP_BAT_CELL', 'VOL_START_BALAN']:
                 if k in config:
                     all_data[k] = config[k]
             if 'CONFIG_FLAGS_DECODED' in config:
@@ -567,7 +567,8 @@ class JKBMSV2Client(BaseModbusClient):
             {'id': 'runtime_text',   'name': 'Uptime', 'value_template': '{{ value_json.ODD_RUN_TIME_TEXT }}'},
             {'id': 'bat_power_w',    'name': 'Battery Power', 'unit': 'W', 'device_class': 'power', 'state_class': 'measurement', 'value_template': '{{ value_json.BAT_POWER_W }}'},
             {'id': 'charging_power', 'name': 'Charging Power', 'unit': 'W', 'device_class': 'power', 'state_class': 'measurement', 'value_template': '{{ value_json.CHARGING_POWER }}'},
-            {'id': 'discharging_power', 'name': 'Discharging Power', 'unit': 'W', 'device_class': 'power', 'state_class': 'measurement', 'value_template': '{{ value_json.DISCHARGING_POWER }}'}
+            {'id': 'discharging_power', 'name': 'Discharging Power', 'unit': 'W', 'device_class': 'power', 'state_class': 'measurement', 'value_template': '{{ value_json.DISCHARGING_POWER }}'},
+            {'id': 'vol_start_balan', 'name': 'Balance Start Voltage', 'unit': 'mV', 'state_class': 'measurement', 'value_template': '{{ value_json.VOL_START_BALAN }}'},
         ]
         sensors.extend(extra_sensors)
 
