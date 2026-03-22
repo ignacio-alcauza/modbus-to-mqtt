@@ -62,6 +62,7 @@ DEYE_HYBRID_REGISTERS = {
             {"name": "PV2_POWER", "address": 187, "count": 1, "type": "U16", "unit": "W"},
             {"name": "BATTERY_POWER", "address": 190, "count": 1, "type": "I16", "gain": -1, "unit": "W"},
             {"name": "BATTERY_CURRENT", "address": 191, "count": 1, "type": "I16", "gain": -100, "unit": "A"},
+            {"name": "GRID_CONNECTED", "address": 194, "count": 1, "type": "U16"},
         ]
     }
 }
@@ -175,9 +176,14 @@ class DeyeInverterClient(BaseModbusClient):
             'kWh': 'energy'
         }
         
+        # Registers handled as binary_sensor (excluded from auto sensor loop)
+        binary_sensor_names = {"GRID_CONNECTED"}
+
         for group in DEYE_HYBRID_REGISTERS.values():
             for reg in group["registers"]:
                 name = reg["name"]
+                if name in binary_sensor_names:
+                    continue
                 unit = reg.get("unit")
                 dclass = class_map.get(unit)
                 
@@ -193,6 +199,16 @@ class DeyeInverterClient(BaseModbusClient):
                 
                 sensors.append(sensor)
         
+        sensors.append({
+            'id': 'deye_grid_connected',
+            'name': 'Grid Connected',
+            'component': 'binary_sensor',
+            'device_class': 'connectivity',
+            'value_template': '{{ value_json.GRID_CONNECTED }}',
+            'payload_on': 1,
+            'payload_off': 0,
+        })
+
         sensors.append({
             'id': 'model',
             'name': 'Model',
