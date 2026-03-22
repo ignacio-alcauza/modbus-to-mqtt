@@ -20,6 +20,13 @@ DEYE_HYBRID_REGISTERS = {
             {"name": "DEVICE_SERIAL", "address": 3, "count": 5, "type": "STR"},
         ]
     },
+    "Status": {
+        "base": 59,
+        "count": 1,
+        "registers": [
+            {"name": "INVERTER_STATUS", "address": 59, "count": 1, "type": "U16"},
+        ]
+    },
     "Energy_Data": {
         "base": 60,
         "count": 41,
