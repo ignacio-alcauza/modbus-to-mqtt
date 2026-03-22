@@ -41,6 +41,7 @@ DEYE_HYBRID_REGISTERS = {
             {"name": "DAY_GRID_SELL", "address": 77, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
             {"name": "TOTAL_GRID_BUY", "address": 78, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
             {"name": "TOTAL_GRID_SELL", "address": 80, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
+            {"name": "DAY_LOAD_ENERGY", "address": 84, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
             {"name": "TOTAL_LOAD_ENERGY", "address": 96, "count": 2, "type": "U32_LE", "gain": 10, "unit": "kWh"},
             {"name": "GRID_FREQUENCY", "address": 79, "count": 1, "type": "U16", "gain": 100, "unit": "Hz"},
         ]
@@ -61,6 +62,7 @@ DEYE_HYBRID_REGISTERS = {
         "registers": [
             {"name": "GRID_L1_POWER", "address": 166, "count": 1, "type": "I16", "unit": "W"},
             {"name": "GRID_TOTAL_POWER", "address": 169, "count": 1, "type": "I16", "unit": "W"},
+            {"name": "INVERTER_CURRENT", "address": 164, "count": 1, "type": "U16", "gain": 100, "unit": "A"},
             {"name": "LOAD_L1_POWER", "address": 173, "count": 1, "type": "U16", "unit": "W"},
             {"name": "LOAD_TOTAL_POWER", "address": 175, "count": 1, "type": "U16", "unit": "W"},
             {"name": "BATTERY_TEMP", "address": 182, "count": 1, "type": "I16", "gain": 10, "unit": "°C"},
