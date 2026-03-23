@@ -69,8 +69,8 @@ DEYE_HYBRID_REGISTERS = {
             {"name": "BATTERY_VOLTAGE", "address": 183, "count": 1, "type": "U16", "gain": 100, "unit": "V"},
             {"name": "BATTERY_SOC", "address": 184, "count": 1, "type": "U16", "unit": "%"},
             {"name": "PV2_POWER", "address": 187, "count": 1, "type": "U16", "unit": "W"},
-            {"name": "BATTERY_POWER", "address": 190, "count": 1, "type": "I16", "gain": -1, "unit": "W"},
-            {"name": "BATTERY_CURRENT", "address": 191, "count": 1, "type": "I16", "gain": -100, "unit": "A"},
+            {"name": "BATTERY_POWER", "address": 190, "count": 1, "type": "I16", "unit": "W"},
+            {"name": "BATTERY_CURRENT", "address": 191, "count": 1, "type": "I16", "gain": 100, "unit": "A"},
             {"name": "GRID_CONNECTED", "address": 194, "count": 1, "type": "U16"},
         ]
     },
