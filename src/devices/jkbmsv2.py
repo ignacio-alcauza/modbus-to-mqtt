@@ -224,6 +224,7 @@ REALTIME_REGISTERS = {
     'BALAN_STA':          {'addr': 0x12A3, 'type': 'UINT8_HIGH','unit': '',   'scale': 1,    'desc': 'Estado balanceo (2=desc, 1=carga, 0=off)'},
     'SOC_CAP_REMAIN':     {'addr': 0x12A4, 'type': 'UINT32', 'unit': 'Ah',    'scale': 0.001,'desc': 'Capacidad restante'},
     'SOC_FULL_CHARGE_CAP':{'addr': 0x12A6, 'type': 'UINT32', 'unit': 'Ah',    'scale': 0.001,'desc': 'Capacidad carga completa actual'},
+    'SOC_ACCUM_CAP':      {'addr': 0x12B2, 'type': 'UINT32', 'unit': 'Ah',    'scale': 0.001,'desc': 'Capacidad Ah acumulada (valor mostrado en app Bluetooth)'},
     'SOC_CYCLE_COUNT':    {'addr': 0x12B6, 'type': 'UINT16', 'unit': '',      'scale': 1,    'desc': 'Número de ciclos'},
     'SOC_CYCLE_CAP':      {'addr': 0x12B7, 'type': 'UINT16', 'unit': 'Ah',    'scale': 0.1,  'desc': 'Capacidad total acumulada en ciclos'},
 
