@@ -294,11 +294,11 @@ DEVICE_INFO_REGISTERS = {
     'ODD_RUN_TIME':       {'addr': 0x1410, 'type': 'UINT32', 'unit': 's', 'scale': 1, 'desc': 'Tiempo total funcionamiento acumulado'},
     'PWR_ON_TIMES':       {'addr': 0x1412, 'type': 'UINT32', 'unit': '',  'scale': 1, 'desc': 'Número de encendidos'},
     'BLE_NAME':           {'addr': 0x1414, 'type': 'ASCII', 'length': 16, 'desc': 'Nombre Bluetooth (no oficial)'},
-    'BLE_PIN':            {'addr': 0x141C, 'type': 'ASCII', 'length': 16, 'desc': 'PIN Bluetooth (no oficial)'},
+    # BLE_PIN (0x141C), USER_PRIVATE_DATA (0x1430) y PASSWORD (0x1438) quedan
+    # fuera intencionadamente: son credenciales del BMS y no deben recolectarse
+    # ni publicarse (ver TECHNICAL.md §2.1).
     'FIRST_ON_DATE':      {'addr': 0x1424, 'type': 'ASCII', 'length': 8,  'desc': 'Fecha primer encendido (no oficial)'},
     'SERIAL_NO':          {'addr': 0x1428, 'type': 'ASCII', 'length': 16, 'desc': 'Número de serie (no oficial)'},
-    'USER_PRIVATE_DATA':  {'addr': 0x1430, 'type': 'ASCII', 'length': 16, 'desc': 'Datos privados usuario (no oficial)'},
-    'PASSWORD':           {'addr': 0x1438, 'type': 'ASCII', 'length': 16, 'desc': 'Contraseña (no oficial)'},
     'USER_DATA2':         {'addr': 0x1440, 'type': 'ASCII', 'length': 16, 'desc': 'Datos de usuario 2 (no oficial)'},
 }
 

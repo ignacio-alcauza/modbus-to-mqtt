@@ -68,11 +68,10 @@ Lectura: una sola petición desde `0x1400` con `count=72` (obligatorio, ver secc
 | ODD_RUN_TIME | 0x1410 | UINT32 | s | **Uptime acumulado** (fuente correcta de uptime) |
 | PWR_ON_TIMES | 0x1412 | UINT32 | — | Número de encendidos |
 | BLE_NAME | 0x1414 | ASCII(16) | — | Nombre Bluetooth |
-| BLE_PIN | 0x141C | ASCII(16) | — | PIN Bluetooth |
 | FIRST_ON_DATE | 0x1424 | ASCII(8) | — | Fecha primer encendido |
 | SERIAL_NO | 0x1428 | ASCII(16) | — | Número de serie |
-| USER_PRIVATE_DATA | 0x1430 | ASCII(16) | — | Datos usuario |
-| PASSWORD | 0x1438 | ASCII(16) | — | Contraseña BMS |
+
+> **Campos excluidos deliberadamente:** `BLE_PIN` (0x141C), `USER_PRIVATE_DATA` (0x1430) y `PASSWORD` (0x1438) son credenciales del BMS (PIN Bluetooth y contraseñas) y **no se recolectan ni se publican**. No están en `DEVICE_INFO_REGISTERS` (`src/devices/jkbmsv2.py`), así que nunca se decodifican a un valor Python ni entran en el diccionario de datos — no llegan a MQTT, al webhook ni a los ficheros de debug. El firmware sigue devolviendo esos registros como parte del bloque Modbus `0x1400–0x1447` (una sola petición de 72 words), pero el software los descarta sin interpretarlos.
 
 ### 2.2 Bloque 0x1200 — Datos en tiempo real
 
