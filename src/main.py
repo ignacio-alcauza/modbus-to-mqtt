@@ -4,15 +4,21 @@ import sys
 import json
 import yaml
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 from utils.logger import configure_logging
 from devices.jkbmsv2 import JKBMSV2Client
 from devices.deye import DeyeInverterClient
 from mqtt.publisher import MQTTPublisher
+from webhook.publisher import WebhookPublisher
 
 logger = configure_logging(logging.INFO)
+
+# Versión de la estructura del payload de estado (no la versión del software).
+# Incrementar solo ante cambios incompatibles: campos eliminados/renombrados,
+# cambio de unidades, cambio de tipo o cambio de convención de signos.
+SCHEMA_VERSION = 1
 
 def load_config():
     """Load configuration from config.yml and .env."""
@@ -72,10 +78,18 @@ def main():
     if not publisher.connect():
         sys.exit(1)
 
+    # Init secondary webhook forwarder (no-op unless the configured URL's host is a literal IP)
+    webhook_conf = config.get("webhook", {})
+    webhook = WebhookPublisher(
+        url=webhook_conf.get("url"),
+        active=webhook_conf.get("active", False),
+        timeout_seconds=webhook_conf.get("timeout_seconds", 5),
+    )
+
     devices = []
-    
+
     # Init devices based on config
-    
+
     broker_conf = config.get("broker-mqtt", {})
 
     jkbms_conf = config.get("jkbms", {})
@@ -186,8 +200,16 @@ def main():
 
                                 data.pop("_raw_data", None)
 
+                                data["_schema_version"] = SCHEMA_VERSION
+                                data["_observed_at"] = (
+                                    datetime.now(timezone.utc)
+                                    .isoformat(timespec="milliseconds")
+                                    .replace("+00:00", "Z")
+                                )
+
                                 publisher.publish_raw(dev["availability_topic"], "online", retain=True)
                                 publisher.publish_data(dev["topic"], data)
+                                webhook.send(dev["name"], data)
                             else:
                                 logger.warning(f"No data received from {dev['name']}")
                                 publisher.publish_raw(dev["availability_topic"], "offline", retain=True)

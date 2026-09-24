@@ -1,6 +1,6 @@
 # modbus-to-mqtt — Documentación Técnica
 
-**Última actualización:** 2026-03-21
+**Última actualización:** 2026-09-24
 **Hardware:** JK-PB2A16S20P (HW v19, FW v27) + Deye SUN-6K-SG05LP1-EU-AM2-P
 
 ---
@@ -44,8 +44,9 @@
 | `src/devices/jkbmsv2.py` | Driver JK BMS (mapa + lectura + decodificación) |
 | `src/devices/deye.py` | Driver Deye Inversor (mapa + lectura + decodificación) |
 | `src/mqtt/publisher.py` | Cliente MQTT, discovery HA, availability |
+| `src/webhook/publisher.py` | Reenvío secundario por HTTP POST (ver sección 5.7) |
 | `src/utils/modbus.py` | Wrapper Modbus TCP con reintentos |
-| `config.yml` | Configuración de dispositivos y broker |
+| `config.yml` | Configuración de dispositivos, broker y webhook |
 
 ---
 
@@ -129,6 +130,7 @@ Lectura: múltiples peticiones por rangos + overrides dedicados (ver sección 3)
 | BALAN_STA | 0x12A3 | UINT8_HIGH | — | Estado balanceo (0=Off, 1=Carga, 2=Desc.) |
 | SOC_CAP_REMAIN | 0x12A4 | UINT32 | ×0.001 Ah | Capacidad restante |
 | SOC_FULL_CHARGE_CAP | 0x12A6 | UINT32 | ×0.001 Ah | Capacidad carga completa actual |
+| SOC_ACCUM_CAP | 0x12B2 | UINT32 | ×0.001 Ah | Capacidad Ah acumulada (mismo valor que muestra la app Bluetooth) |
 | SOC_CYCLE_COUNT | 0x12B6 | UINT16 | — | Número de ciclos completos |
 | SOC_CYCLE_CAP | 0x12B7 | UINT16 | ×0.1 Ah | Capacidad acumulada total en ciclos |
 
@@ -300,36 +302,48 @@ page12E0 = read_holding_registers(0x12E0, 16)   # TEMP_BAT4 (0x12ED), TEMP_BAT5 
 | DEVICE_TYPE | 0 | U16 | Tipo de dispositivo (valor: 3) |
 | DEVICE_SERIAL | 3 | STR×5 | Número de serie en ASCII |
 
-### 4.2 Energía acumulada (addr 60–100)
+### 4.2 Estado (addr 59)
+
+| Campo | Addr | Tipo | Descripción |
+|---|---|---|---|
+| INVERTER_STATUS | 59 | U16 | Código de estado del inversor |
+
+### 4.3 Energía acumulada (addr 60–100)
 
 | Campo | Addr | Tipo | Gain | Unidad | Descripción |
 |---|---|---|---|---|---|
 | DAY_PV_ENERGY | 60 | U16 | ÷10 | kWh | Energía PV del día |
 | TOTAL_PV_ENERGY | 63 | U32_LE | ÷10 | kWh | Energía PV total acumulada |
+| DAY_BATTERY_CHARGE | 70 | U16 | ÷10 | kWh | Energía carga batería del día |
+| DAY_BATTERY_DISCHARGE | 71 | U16 | ÷10 | kWh | Energía descarga batería del día |
 | TOTAL_BATTERY_CHARGE | 72 | U32_LE | ÷10 | kWh | Energía carga batería total |
 | TOTAL_BATTERY_DISCHARGE | 74 | U32_LE | ÷10 | kWh | Energía descarga batería total |
 | DAY_GRID_BUY | 76 | U16 | ÷10 | kWh | Compra red del día |
 | DAY_GRID_SELL | 77 | U16 | ÷10 | kWh | Venta red del día |
-| TOTAL_GRID_BUY | 78 | U16 | ÷10 | kWh | Compra red total |
 | GRID_FREQUENCY | 79 | U16 | ÷100 | Hz | Frecuencia de red |
+| TOTAL_GRID_BUY | 78 | U16 | ÷10 | kWh | Compra red total |
 | TOTAL_GRID_SELL | 80 | U16 | ÷10 | kWh | Venta red total |
+| DAY_LOAD_ENERGY | 84 | U16 | ÷10 | kWh | Energía consumida del día |
 | TOTAL_LOAD_ENERGY | 96 | U32_LE | ÷10 | kWh | Energía consumida total |
 
 > `U32_LE`: 32 bits little-endian entre dos registros consecutivos: `value = (reg[1] << 16) | reg[0]`
 
-### 4.3 Live Data 1 (addr 100–154)
+### 4.4 Live Data 1 (addr 100–154)
 
 | Campo | Addr | Tipo | Gain | Unidad | Descripción |
 |---|---|---|---|---|---|
-| PV1_VOLTAGE | 109 | U16 | ÷10 | V | Tensión string PV1 |
-| PV1_CURRENT | 110 | U16 | ÷10 | A | Corriente string PV1 |
-| RADIATOR_TEMP | 111 | I16 | ÷10 | °C | Temperatura radiador inversor |
+| PV2_VOLTAGE | 111 | U16 | ÷10 | V | Tensión string PV2 |
+| PV2_CURRENT | 112 | U16 | ÷10 | A | Corriente string PV2 |
+| RADIATOR_TEMP | 145 | I16 | ÷10 | °C | Temperatura radiador inversor ¹ |
 | GRID_L1_VOLTAGE | 150 | U16 | ÷10 | V | Tensión red fase L1 |
 
-### 4.4 Live Data 2 (addr 160–199)
+> Este hardware es monofásico con dos strings PV (PV1 no está cableado); solo se leen los registros de PV2.
+
+### 4.5 Live Data 2 (addr 160–199)
 
 | Campo | Addr | Tipo | Gain | Unidad | Descripción |
 |---|---|---|---|---|---|
+| INVERTER_CURRENT | 164 | U16 | ÷100 | A | Corriente de salida del inversor |
 | GRID_L1_POWER | 166 | I16 | ×1 | W | Potencia red L1 (+importar, −exportar) |
 | GRID_TOTAL_POWER | 169 | I16 | ×1 | W | Potencia red total |
 | LOAD_L1_POWER | 173 | U16 | ×1 | W | Potencia carga L1 |
@@ -337,20 +351,31 @@ page12E0 = read_holding_registers(0x12E0, 16)   # TEMP_BAT4 (0x12ED), TEMP_BAT5 
 | BATTERY_TEMP | 182 | I16 | ÷10 −100 | °C | Temperatura batería ¹ |
 | BATTERY_VOLTAGE | 183 | U16 | ÷100 | V | Tensión batería |
 | BATTERY_SOC | 184 | U16 | ×1 | % | Estado de carga batería |
-| PV1_POWER | 186 | U16 | ×1 | W | Potencia PV1 |
 | PV2_POWER | 187 | U16 | ×1 | W | Potencia PV2 |
-| BATTERY_POWER | 190 | I16 | ×−1 | W | Potencia batería (+desc., −carga) ² |
-| BATTERY_CURRENT | 191 | I16 | ÷−100 | A | Corriente batería (+desc., −carga) ² |
+| BATTERY_POWER | 190 | I16 | ×1 | W | Potencia batería (+descarga, −carga) ² |
+| BATTERY_CURRENT | 191 | I16 | ÷100 | A | Corriente batería (+descarga, −carga) ² |
+| GRID_CONNECTED | 194 | U16 | — | — | Red conectada (binary_sensor) |
 
-> ¹ **BATTERY_TEMP:** el inversor codifica la temperatura como `(T + 100) × 10`. El software aplica: `raw ÷ 10 − 100`. Ejemplo: raw=1157 → 115.7 − 100 = **15.7°C**.
-> ² El signo negativo del gain invierte la convención del inversor: el raw positivo indica descarga, el valor resultante positivo también indica descarga.
+> ¹ **BATTERY_TEMP / RADIATOR_TEMP:** el inversor codifica la temperatura como `(T + 100) × 10`. El software aplica: `raw ÷ 10 − 100`. Ejemplo: raw=1157 → 115.7 − 100 = **15.7°C**.
+> ² **BATTERY_POWER / BATTERY_CURRENT:** el raw del inversor ya sigue la convención de la Sunsynk Power Flow Card (positivo = descarga, negativo = carga); no se invierte el signo en software (ver commit `ee16bd3`, 2026-03-23 — antes se aplicaba `gain=-1` erróneamente y la tarjeta de flujo mostraba la dirección invertida).
 
-### 4.5 Correcciones aplicadas respecto al código original
+### 4.6 Configuración (addr 243–248)
+
+| Campo | Addr | Tipo | Descripción |
+|---|---|---|---|
+| PRIORITY_LOAD | 243 | U16 | Prioridad de carga (binary_sensor) |
+| USE_TIMER | 248 | U16 | Uso de temporizador (binary_sensor, `payload_on=255`) |
+
+### 4.7 Correcciones aplicadas respecto al código original
 
 | Campo | Antes | Después | Motivo |
 |---|---|---|---|
 | RADIATOR_TEMP gain | 100 | **10** | raw=219 → 2.19°C (incorrecto) vs 21.9°C (correcto) |
+| RADIATOR_TEMP addr | 111 | **145** | addr 111 correspondía en realidad a PV2_VOLTAGE |
 | LOAD_L1_POWER addr | 172 | **173** | addr 172=0W, addr 173=167W (= LOAD_TOTAL en monofásico) |
+| PV1_* (addr 109/110/186) | usados | **eliminados**, sustituidos por PV2_* (addr 111/112/187) | Este hardware solo tiene cableado el string PV2 |
+| BATTERY_POWER gain | −1 | **sin gain (×1)** | El raw ya sigue la convención Sunsynk; la inversión mostraba el flujo de batería al revés en HA |
+| BATTERY_CURRENT gain | −100 | **100** | Mismo motivo que BATTERY_POWER |
 
 ---
 
@@ -375,10 +400,12 @@ Los topics de estado **no** están bajo el prefijo `homeassistant/` para evitar 
 
 ### 5.2 Formato del payload de estado
 
-El payload de `<device>/state` es un JSON plano con todos los campos del dispositivo:
+El payload de `<device>/state` es un JSON plano con todos los campos del dispositivo, precedido de dos metadatos reservados (`_schema_version`, `_observed_at`):
 
 ```json
 {
+  "_schema_version": 1,
+  "_observed_at": "2026-09-24T18:32:10.412Z",
   "BAT_VOL": 53.025,
   "BAT_CURRENT": -6.858,
   "SOC": 86,
@@ -394,6 +421,38 @@ El payload de `<device>/state` es un JSON plano con todos los campos del disposi
   ...
 }
 ```
+
+El mismo payload (mismos metadatos incluidos) es el que recibe el webhook secundario — ver sección 5.7.
+
+#### 5.2.1 Metadatos reservados (`_schema_version`, `_observed_at`)
+
+Todo campo que empiece por `_` es metadato reservado, no una medición del dispositivo. Ningún consumidor debe generar entidades ni lógica a partir de ellos sin tratamiento explícito; los consumidores actuales pueden ignorarlos sin problema.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `_schema_version` | entero | Versión de la **estructura** del payload (no la versión del software). Valor actual: `1` (constante `SCHEMA_VERSION` en `src/main.py`). Solo se incrementa ante un cambio incompatible: eliminación/renombrado de campos, cambio de unidad, cambio de tipo o cambio de convención de signos. Añadir campos nuevos opcionales no requiere incrementarla. |
+| `_observed_at` | string | Instante en que terminó de leerse correctamente el bloque Modbus y quedó construido el diccionario de valores — **no** el instante en que HA/el broker/el webhook reciben el mensaje. Formato ISO 8601/RFC 3339, siempre en UTC, con milisegundos y sufijo `Z` (p.ej. `2026-09-24T18:32:10.412Z`). |
+
+**Punto de generación:** una sola vez por ciclo de lectura exitoso, en `src/main.py`, justo después de `client.get_all_data()` y de eliminar `_raw_data`, y antes de publicar a MQTT o al webhook:
+
+```python
+data.pop("_raw_data", None)
+data["_schema_version"] = SCHEMA_VERSION
+data["_observed_at"] = (
+    datetime.now(timezone.utc)
+    .isoformat(timespec="milliseconds")
+    .replace("+00:00", "Z")
+)
+
+publisher.publish_data(dev["topic"], data)
+webhook.send(dev["name"], data)
+```
+
+Como ambos publishers reciben el mismo objeto `data`, MQTT y webhook siempre llevan idéntico `_observed_at`.
+
+**Si la lectura Modbus falla** (`get_all_data()` devuelve vacío o lanza excepción), no se generan ni añaden metadatos, no se publica payload de estado, y solo se marca `offline` en el topic de availability — nunca se republica una medición vieja con timestamp nuevo.
+
+**Impacto en HA Discovery:** ninguno. Los sensores de HA se generan a partir de listas estáticas (`REALTIME_REGISTERS` en `jkbmsv2.py`, `DEYE_HYBRID_REGISTERS` en `deye.py`), no introspeccionando las claves del payload, así que `_schema_version` y `_observed_at` nunca generan entidades nuevas.
 
 ### 5.3 Discovery — Sensores (sensor)
 
@@ -454,20 +513,61 @@ El discovery payload incluye `payload_on: "ON"` y `payload_off: "OFF"` explícit
 - Alarmas decodificadas
 - Info dispositivo: modelo, HW/SW version, serial, uptime
 
-**Deye Inversor (28 entidades):**
-- Energías acumuladas: PV, batería carga/descarga, red compra/venta, carga
-- Potencias en tiempo real: PV1, PV2, red, carga, batería
-- Tensiones: PV1, red L1, batería
-- Corrientes: PV1, batería
+**Deye Inversor:**
+- Estado: código de estado del inversor
+- Energías acumuladas: PV, batería carga/descarga (día y total), red compra/venta, consumo (día y total)
+- Potencias en tiempo real: PV2, red, carga, batería
+- Tensiones: PV2, red L1, batería
+- Corrientes: PV2, inversor, batería
 - SOC batería, temperatura batería, temperatura radiador
 - Frecuencia de red
+- Binary sensors: red conectada, prioridad de carga, uso de temporizador
 - Modelo, serial
+
+> Nota: este hardware solo tiene cableado el string PV2 (ver §4.4); no hay entidades PV1.
 
 ### 5.6 Availability
 
 - Se publica `online` (retained) tras cada lectura exitosa.
 - Se publica `offline` (retained) si `get_all_data()` retorna vacío o lanza excepción.
 - HA marca todas las entidades del dispositivo como *unavailable* automáticamente.
+
+### 5.7 Reenvío secundario por webhook (HTTP)
+
+Además de publicar a MQTT/HA, tras cada lectura exitosa el mismo payload JSON plano (idéntico al que se publica en `<device>/state`) se envía por `POST` a una URL HTTP configurable. Es un segundo destino "espejo": no sustituye ni afecta al flujo MQTT/HA, ambos ocurren en cada ciclo de lectura.
+
+**Fichero:** `src/webhook/publisher.py` (`WebhookPublisher`), invocado desde `src/main.py` justo después de `publisher.publish_data(...)`.
+
+**Comportamiento clave — nunca envía si la URL no apunta a una IP:**
+
+El publisher solo se activa (`enabled = True`) si se cumplen **ambas** condiciones:
+1. `webhook.active: true` en `config.yml`.
+2. El host de `webhook.url` es una **dirección IP literal** (IPv4 o IPv6), verificado con el módulo `ipaddress` sobre el hostname extraído por `urllib.parse.urlparse`.
+
+Si el host es un nombre de dominio, `localhost`, o el placeholder por defecto (`CAMBIA_ESTA_IP`), el publisher queda deshabilitado permanentemente para esa ejecución y `send()` retorna inmediatamente sin intentar ninguna petición de red. Esto es intencional: evita golpear un endpoint no configurado o hacer resoluciones DNS no deseadas.
+
+```python
+# src/webhook/publisher.py — extracto
+def _host_is_ip(url: str) -> bool:
+    hostname = urlparse(url).hostname
+    ipaddress.ip_address(hostname)   # lanza ValueError si no es IP literal
+    return True
+
+self.enabled = bool(active and url and _host_is_ip(url))
+```
+
+**Payload:** JSON plano por dispositivo, sin envolver — el mismo dict que `get_all_data()` produce (tras quitar `_raw_data` y añadir `_schema_version`/`_observed_at`, ver §5.2.1), byte a byte igual al que llega a `jkbms_pre/state` o `deye_inverter/state`, incluido el mismo `_observed_at`.
+
+**Errores:** cualquier fallo de red o HTTP ≥400 se registra como `warning` y no interrumpe el bucle principal ni afecta a la publicación MQTT.
+
+**Configuración (`config.yml`):**
+
+```yaml
+webhook:
+  active: true
+  url: "http://CAMBIA_ESTA_IP:8080/ingest"   # sustituir por la IP real del servidor
+  timeout_seconds: 5
+```
 
 ---
 
@@ -504,6 +604,11 @@ deye_inverter:
   query_seconds: 10
   debug_values: false
   model: SUN-6K-SG05LP1-EU-AM2-P
+
+webhook:
+  active: true
+  url: "http://CAMBIA_ESTA_IP:8080/ingest"  # reenvío HTTP secundario, ver sección 5.7
+  timeout_seconds: 5
 ```
 
 ### 6.2 Variables de entorno (.env)
