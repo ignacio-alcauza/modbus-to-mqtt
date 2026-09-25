@@ -576,6 +576,7 @@ webhook:
 
 ```yaml
 broker-mqtt:
+  active: true                     # false = no conecta ni publica nada por MQTT (ver 6.3)
   mqtt_server: ${MQTT_SERVER}      # IP del broker
   mqtt_port: ${MQTT_PORT}          # Puerto (default 1883)
   mqtt_user: ${MQTT_USER}
@@ -635,3 +636,28 @@ python3 src/deye_probe.py
 # Dump raw de registros JK BMS (descubrimiento de direcciones)
 python3 src/jkbms_raw_dump.py
 ```
+
+### 6.4 Ejecutar en local sin publicar a Home Assistant
+
+Para probar cambios contra el hardware real (u observar el payload) sin tocar la instancia real de HA, se usa `broker-mqtt.active: false` en `config.yml`: `main.py` entonces se salta por completo el connect, el discovery y el publish de MQTT (nunca intenta conectar al broker), pero sigue leyendo los dispositivos y —si está activo— sigue enviando por webhook con normalidad. Es útil combinarlo con `webhook.url` apuntando a un receptor local:
+
+```yaml
+broker-mqtt:
+  active: false
+
+webhook:
+  active: true
+  url: "http://127.0.0.1:8080/ingest"
+```
+
+```bash
+# Terminal 1: receptor local (imprime cada payload recibido)
+python3 scripts/webhook_receiver.py 8080
+
+# Terminal 2: el bridge, ejecutado nativo (evita el soporte limitado de
+# network_mode: host de Docker Desktop en macOS)
+source .venv/bin/activate
+python3 src/main.py
+```
+
+En producción (`config.yml` de cada host, no versionado) el valor por defecto de `broker-mqtt.active` es `true` si la clave no existe, así que este flag no cambia nada allí salvo que se añada explícitamente.

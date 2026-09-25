@@ -63,20 +63,28 @@ def main():
         logger.error(f"Failed to create initial heartbeat file: {e}")
 
     config = load_config()
-    
-    # Init MQTT
-    mqtt_host = os.getenv("MQTT_SERVER")
-    mqtt_port = int(os.getenv("MQTT_PORT", 1883))
-    mqtt_user = os.getenv("MQTT_USER")
-    mqtt_pass = os.getenv("MQTT_PASS")
-    
-    if not mqtt_host:
-        logger.error("MQTT_SERVER not found in .env. Exiting.")
-        sys.exit(1)
-        
-    publisher = MQTTPublisher(host=mqtt_host, port=mqtt_port, user=mqtt_user, password=mqtt_pass)
-    if not publisher.connect():
-        sys.exit(1)
+
+    # Init MQTT (can be fully disabled with broker-mqtt.active: false, e.g. for
+    # local runs that should only forward to the webhook and never touch HA)
+    broker_conf = config.get("broker-mqtt", {})
+    mqtt_enabled = broker_conf.get("active", True)
+
+    publisher = None
+    if mqtt_enabled:
+        mqtt_host = os.getenv("MQTT_SERVER")
+        mqtt_port = int(os.getenv("MQTT_PORT", 1883))
+        mqtt_user = os.getenv("MQTT_USER")
+        mqtt_pass = os.getenv("MQTT_PASS")
+
+        if not mqtt_host:
+            logger.error("MQTT_SERVER not found in .env. Exiting.")
+            sys.exit(1)
+
+        publisher = MQTTPublisher(host=mqtt_host, port=mqtt_port, user=mqtt_user, password=mqtt_pass)
+        if not publisher.connect():
+            sys.exit(1)
+    else:
+        logger.warning("MQTT publishing disabled (broker-mqtt.active: false) — HA will receive nothing; only the webhook (if enabled) will run.")
 
     # Init secondary webhook forwarder (no-op unless the configured URL's host is a literal IP)
     webhook_conf = config.get("webhook", {})
@@ -89,8 +97,6 @@ def main():
     devices = []
 
     # Init devices based on config
-
-    broker_conf = config.get("broker-mqtt", {})
 
     jkbms_conf = config.get("jkbms", {})
     if jkbms_conf.get("active", False):
@@ -146,28 +152,29 @@ def main():
         sys.exit(0)
 
     # Publish MQTT Discovery Configs for Home Assistant
-    discovery_prefix = broker_conf.get("discovery_prefix", "homeassistant")
-    node_id = broker_conf.get("node_id", "modbus2mqtt")
-    for dev in devices:
-        sensors = dev["client"].get_discovery_sensors()
-        if sensors:
-            device_id = f"{node_id}_{dev['name']}"
+    if mqtt_enabled:
+        discovery_prefix = broker_conf.get("discovery_prefix", "homeassistant")
+        node_id = broker_conf.get("node_id", "modbus2mqtt")
+        for dev in devices:
+            sensors = dev["client"].get_discovery_sensors()
+            if sensors:
+                device_id = f"{node_id}_{dev['name']}"
 
-            logger.info(f"Publishing HA Discovery for {dev['name']} ({len(sensors)} sensors)")
-            try:
-                publisher.publish_discovery(
-                    device_id=device_id,
-                    device_name=dev["name"].upper(),
-                    state_topic=dev["topic"],
-                    sensors=sensors,
-                    discovery_prefix=discovery_prefix,
-                    node_id=node_id,
-                    sw_version=dev.get("firmware_version"),
-                    hw_version=dev.get("hardware_version"),
-                    availability_topic=dev["availability_topic"],
-                )
-            except Exception as e:
-                logger.error(f"Failed to publish discovery for {dev['name']}: {e}")
+                logger.info(f"Publishing HA Discovery for {dev['name']} ({len(sensors)} sensors)")
+                try:
+                    publisher.publish_discovery(
+                        device_id=device_id,
+                        device_name=dev["name"].upper(),
+                        state_topic=dev["topic"],
+                        sensors=sensors,
+                        discovery_prefix=discovery_prefix,
+                        node_id=node_id,
+                        sw_version=dev.get("firmware_version"),
+                        hw_version=dev.get("hardware_version"),
+                        availability_topic=dev["availability_topic"],
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to publish discovery for {dev['name']}: {e}")
 
     logger.info("Starting main loop...")
     
@@ -207,15 +214,18 @@ def main():
                                     .replace("+00:00", "Z")
                                 )
 
-                                publisher.publish_raw(dev["availability_topic"], "online", retain=True)
-                                publisher.publish_data(dev["topic"], data)
+                                if mqtt_enabled:
+                                    publisher.publish_raw(dev["availability_topic"], "online", retain=True)
+                                    publisher.publish_data(dev["topic"], data)
                                 webhook.send(dev["name"], data)
                             else:
                                 logger.warning(f"No data received from {dev['name']}")
-                                publisher.publish_raw(dev["availability_topic"], "offline", retain=True)
+                                if mqtt_enabled:
+                                    publisher.publish_raw(dev["availability_topic"], "offline", retain=True)
                     except Exception as e:
                         logger.error(f"Error querying {dev['name']}: {e}")
-                        publisher.publish_raw(dev["availability_topic"], "offline", retain=True)
+                        if mqtt_enabled:
+                            publisher.publish_raw(dev["availability_topic"], "offline", retain=True)
 
                     dev["last_run"] = time.time()
                     
@@ -224,7 +234,8 @@ def main():
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     finally:
-        publisher.disconnect()
+        if publisher:
+            publisher.disconnect()
 
 if __name__ == "__main__":
     main()
