@@ -1,19 +1,30 @@
 services:
-  modbus-bridge:
-    build: .
-    image: modbus-to-mqtt-bridge
-    container_name: modbus-to-mqtt-bridge
-    restart: unless-stopped
-    env_file:
-      - .env
-    volumes:
-      - ./config.yml:/app/config.yml:ro
-      - ./logs:/app/logs
-    # For Home Assistant MQTT auto-discovery or local network access
-    network_mode: "host" 
-    healthcheck:
-      test: ["CMD", "python", "src/main.py", "--healthcheck"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+    modbus-bridge:
+      build: .
+      image: modbus-to-mqtt-bridge
+      container_name: modbus-to-mqtt-bridge
+      restart: unless-stopped
+
+      env_file:
+        - .env
+
+      volumes:
+        - ./config.yml:/app/config.yml:ro
+        - ./logs:/app/logs
+
+      networks:
+        default:
+        pulso-ingestion:
+          ipv4_address: 172.28.5.10
+
+      healthcheck:
+        test: ["CMD", "python", "src/main.py", "--healthcheck"]
+        interval: 30s
+        timeout: 10s
+        retries: 3
+        start_period: 30s
+
+networks:
+  pulso-ingestion:
+    external: true
+    name: pulso-ingestion
