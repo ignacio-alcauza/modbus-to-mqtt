@@ -50,6 +50,7 @@ DEYE_HYBRID_REGISTERS = {
         "base": 100,
         "count": 55,
         "registers": [
+            {"name": "PV_DAILY_PRODUCTION", "address": 108, "count": 1, "type": "U16", "gain": 10, "unit": "kWh"},
             {"name": "PV2_VOLTAGE", "address": 111, "count": 1, "type": "U16", "gain": 10, "unit": "V"},
             {"name": "PV2_CURRENT", "address": 112, "count": 1, "type": "U16", "gain": 10, "unit": "A"},
             {"name": "RADIATOR_TEMP", "address": 145, "count": 1, "type": "I16", "gain": 10, "unit": "°C"},

@@ -331,12 +331,14 @@ page12E0 = read_holding_registers(0x12E0, 16)   # TEMP_BAT4 (0x12ED), TEMP_BAT5 
 
 | Campo | Addr | Tipo | Gain | Unidad | Descripción |
 |---|---|---|---|---|---|
+| PV_DAILY_PRODUCTION | 108 | U16 | ÷10 | kWh | Producción fotovoltaica del día (verificado en vivo: raw=111 → 11.1 kWh, ref. usuario 11.0 kWh) |
 | PV2_VOLTAGE | 111 | U16 | ÷10 | V | Tensión string PV2 |
 | PV2_CURRENT | 112 | U16 | ÷10 | A | Corriente string PV2 |
 | RADIATOR_TEMP | 145 | I16 | ÷10 | °C | Temperatura radiador inversor ¹ |
 | GRID_L1_VOLTAGE | 150 | U16 | ÷10 | V | Tensión red fase L1 |
 
 > Este hardware es monofásico con dos strings PV (PV1 no está cableado); solo se leen los registros de PV2.
+> `PV_DAILY_PRODUCTION` (addr 108) es un contador distinto de `DAY_PV_ENERGY` (addr 60, sección 4.3) — ambos son producción PV del día pero de fuentes/agregaciones distintas del inversor; no son intercambiables y pueden diferir ligeramente entre sí.
 
 ### 4.5 Live Data 2 (addr 160–199)
 
