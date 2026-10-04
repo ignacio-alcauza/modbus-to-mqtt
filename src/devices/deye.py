@@ -66,6 +66,10 @@ DEYE_HYBRID_REGISTERS = {
             {"name": "INVERTER_CURRENT", "address": 164, "count": 1, "type": "U16", "gain": 100, "unit": "A"},
             {"name": "LOAD_L1_POWER", "address": 173, "count": 1, "type": "U16", "unit": "W"},
             {"name": "LOAD_TOTAL_POWER", "address": 175, "count": 1, "type": "U16", "unit": "W"},
+            # 173/175 pueden oscilar alrededor de cero y no representan el
+            # consumo real de la vivienda; HOUSE_LOAD_POWER (176) sí lo hace,
+            # verificado en vivo contra el balance PV2+GRID+BATTERY (±3W).
+            {"name": "HOUSE_LOAD_POWER", "address": 176, "count": 1, "type": "U16", "unit": "W", "discovery": False},
             {"name": "BATTERY_TEMP", "address": 182, "count": 1, "type": "I16", "gain": 10, "unit": "°C"},
             {"name": "BATTERY_VOLTAGE", "address": 183, "count": 1, "type": "U16", "gain": 100, "unit": "V"},
             {"name": "BATTERY_SOC", "address": 184, "count": 1, "type": "U16", "unit": "%"},
@@ -201,6 +205,8 @@ class DeyeInverterClient(BaseModbusClient):
             for reg in group["registers"]:
                 name = reg["name"]
                 if name in binary_sensor_names:
+                    continue
+                if not reg.get("discovery", True):
                     continue
                 unit = reg.get("unit")
                 dclass = class_map.get(unit)

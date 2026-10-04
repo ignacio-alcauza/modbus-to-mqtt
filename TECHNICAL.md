@@ -347,8 +347,9 @@ page12E0 = read_holding_registers(0x12E0, 16)   # TEMP_BAT4 (0x12ED), TEMP_BAT5 
 | INVERTER_CURRENT | 164 | U16 | ÷100 | A | Corriente de salida del inversor |
 | GRID_L1_POWER | 166 | I16 | ×1 | W | Potencia red L1 (+importar, −exportar) |
 | GRID_TOTAL_POWER | 169 | I16 | ×1 | W | Potencia red total |
-| LOAD_L1_POWER | 173 | U16 | ×1 | W | Potencia carga L1 |
-| LOAD_TOTAL_POWER | 175 | U16 | ×1 | W | Potencia carga total |
+| LOAD_L1_POWER | 173 | U16 | ×1 | W | Potencia carga L1 — **no representa el consumo real de la vivienda** ³ |
+| LOAD_TOTAL_POWER | 175 | U16 | ×1 | W | Potencia carga total — **no representa el consumo real de la vivienda** ³ |
+| HOUSE_LOAD_POWER | 176 | U16 | ×1 | W | **Consumo real de la vivienda** ³ (sin discovery HA, ver nota) |
 | BATTERY_TEMP | 182 | I16 | ÷10 −100 | °C | Temperatura batería ¹ |
 | BATTERY_VOLTAGE | 183 | U16 | ÷100 | V | Tensión batería |
 | BATTERY_SOC | 184 | U16 | ×1 | % | Estado de carga batería |
@@ -359,6 +360,9 @@ page12E0 = read_holding_registers(0x12E0, 16)   # TEMP_BAT4 (0x12ED), TEMP_BAT5 
 
 > ¹ **BATTERY_TEMP / RADIATOR_TEMP:** el inversor codifica la temperatura como `(T + 100) × 10`. El software aplica: `raw ÷ 10 − 100`. Ejemplo: raw=1157 → 115.7 − 100 = **15.7°C**.
 > ² **BATTERY_POWER / BATTERY_CURRENT:** el raw del inversor ya sigue la convención de la Sunsynk Power Flow Card (positivo = descarga, negativo = carga); no se invierte el signo en software (ver commit `ee16bd3`, 2026-03-23 — antes se aplicaba `gain=-1` erróneamente y la tarjeta de flujo mostraba la dirección invertida).
+> ³ **LOAD_L1_POWER / LOAD_TOTAL_POWER vs HOUSE_LOAD_POWER:** comprobado en vivo que 173/175 pueden oscilar cerca de cero y no son el consumo doméstico. `HOUSE_LOAD_POWER` (176) sí lo es — verificado contra el balance `PV2_POWER + GRID_TOTAL_POWER + BATTERY_POWER`: balance=238W vs addr176=235W (diff 3W) frente a addr175=217W (diff 21W) en la misma lectura. Pequeñas diferencias por pérdidas/autoconsumo son esperadas y no se corrigen artificialmente. `LOAD_L1_POWER`/`LOAD_TOTAL_POWER` se mantienen sin cambios por compatibilidad; ninguno de los tres se deriva matemáticamente de otros campos, los tres son lecturas Modbus directas.
+>
+> `HOUSE_LOAD_POWER` lleva `"discovery": False` en `DEYE_HYBRID_REGISTERS` (`src/devices/deye.py`): sigue en el payload MQTT y en el webhook con normalidad, pero `get_discovery_sensors()` lo omite explícitamente y no genera entidad HA. Este flag es genérico — cualquier registro futuro puede usarlo para excluirse solo del discovery sin afectar a la recolección/publicación.
 
 ### 4.6 Configuración (addr 243–248)
 
