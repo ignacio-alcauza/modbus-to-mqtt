@@ -107,8 +107,13 @@ def decode_alarms(alarm_value):
 
 
 def decode_config_flags(flag_value):
-    """Decodifica bitmask de flags de configuración."""
-    if not flag_value:
+    """Decodifica bitmask de flags de configuración.
+
+    flag_value=0 es un estado válido (todos los flags OFF) y debe decodificarse
+    igual que cualquier otro valor, no colapsarse a {} — de lo contrario no se
+    puede distinguir "todo apagado" de "dato no leído".
+    """
+    if flag_value is None:
         return {}
     return {CONFIG_FLAG_BITS[b]: bool((flag_value >> b) & 1) for b in CONFIG_FLAG_BITS}
 
@@ -164,10 +169,17 @@ CONFIG_REGISTERS = {
     'SCP_DELAY':          {'addr': 0x1040, 'type': 'UINT32', 'unit': 'µs',    'scale': 1,   'desc': 'Retardo protección cortocircuito'},
     'VOL_START_BALAN':    {'addr': 0x1042, 'type': 'UINT32', 'unit': 'mV',    'scale': 1,   'desc': 'Voltaje inicio de balanceo'},
     # Resistencias cableado: 0x1044 a 0x1083 (32 × UINT32, stride 2)
-    'DEV_ADDR':           {'addr': 0x1084, 'type': 'UINT32', 'unit': '',      'scale': 1,   'desc': 'Dirección Modbus ID'},
-    'TIM_PRODISCHARGE':   {'addr': 0x1086, 'type': 'UINT32', 'unit': 's',     'scale': 1,   'desc': 'Tiempo de pre-descarga'},
-    'CONFIG_FLAGS':       {'addr': 0x108A, 'type': 'UINT16', 'unit': 'bitmask','scale': 1,  'desc': 'Flags de configuración'},
-    'TIM_SMART_SLEEP':    {'addr': 0x108C, 'type': 'UINT16', 'unit': 'h',     'scale': 1,   'desc': 'Tiempo smart sleep'},
+    # Direcciones corregidas 2026-10-05: 0x1084/0x1086/0x108A/0x108C (heredadas
+    # del doc V1.1, formula byte_offset/2) daban datos filtrados de páginas
+    # vecinas (p.ej. CONFIG_FLAGS leía siempre 0, VOL_START_BALAN se filtraba
+    # en DEV_ADDR). A partir de byte offset 0x100 el firmware v27 direcciona
+    # directo (addr = 0x1000 + byte_offset, sin dividir /2) — confirmado en
+    # vivo: DEV_ADDR=1 (= Unit ID real) y CONFIG_FLAGS bit9=1 (= "Charging
+    # Float Mode" ON, verificado contra la app Bluetooth).
+    'DEV_ADDR':           {'addr': 0x1108, 'type': 'UINT32', 'unit': '',      'scale': 1,   'desc': 'Dirección Modbus ID'},
+    'TIM_PRODISCHARGE':   {'addr': 0x110C, 'type': 'UINT32', 'unit': 's',     'scale': 1,   'desc': 'Tiempo de pre-descarga'},
+    'CONFIG_FLAGS':       {'addr': 0x1114, 'type': 'UINT16', 'unit': 'bitmask','scale': 1,  'desc': 'Flags de configuración'},
+    'TIM_SMART_SLEEP':    {'addr': 0x1118, 'type': 'UINT16', 'unit': 'h',     'scale': 1,   'desc': 'Tiempo smart sleep'},
 }
 
 CONFIG_FLAG_BITS = {
@@ -352,12 +364,15 @@ class JKBMSV2Client(BaseModbusClient):
         # "página" en el BMS y devuelve datos incorrectos para esa dirección.
         mem = self._read_block(0x1000, 0x8E, chunk_size=68)  # 0x1000 a 0x108D
 
-        # Override: 0x1084-0x108D requieren lectura desde su propia página
-        # (el segundo chunk de _read_block arranca en 0x1044 → página incorrecta)
-        page1084 = self.read_holding_registers(0x1084, 10)
-        if page1084:
-            for i, v in enumerate(page1084):
-                mem[0x1084 + i] = v
+        # Override: DEV_ADDR/TIM_PRODISCHARGE/CONFIG_FLAGS/TIM_SMART_SLEEP viven
+        # en 0x1108-0x1118 (no 0x1084-0x108C, ver nota en CONFIG_REGISTERS).
+        # Una sola lectura combinada de ese rango lanza excepción Modbus (cruza
+        # un límite de página interno del BMS), así que van por separado.
+        for addr, count in [(0x1108, 2), (0x110C, 2), (0x1114, 1), (0x1118, 1)]:
+            page = self.read_holding_registers(addr, count)
+            if page:
+                for i, v in enumerate(page):
+                    mem[addr + i] = v
 
         data = {}
         for key, reg in CONFIG_REGISTERS.items():
@@ -517,15 +532,12 @@ class JKBMSV2Client(BaseModbusClient):
         if realtime:
             all_data.update(realtime)
             
-        # 3. Config (0x1000) - Solo algunos campos clave para no saturar
+        # 3. Config (0x1000) - bloque completo: switches, protecciones de
+        # voltaje/corriente/temperatura, capacidad, DEV_ADDR, flags, etc.
+        # (ver doc/PARAMS_CONFIG.md para el contrato completo del consumidor)
         config = self.read_config_block()
         if config:
-            # Solo pasamos los switches y valores de balanceo
-            for k in ['BAT_CHARGE_EN', 'BAT_DISCHARGE_EN', 'BALAN_EN', 'CAP_BAT_CELL', 'VOL_START_BALAN']:
-                if k in config:
-                    all_data[k] = config[k]
-            if 'CONFIG_FLAGS_DECODED' in config:
-                all_data['CONFIG_FLAGS_DECODED'] = config['CONFIG_FLAGS_DECODED']
+            all_data.update(config)
 
         return all_data
 

@@ -213,8 +213,8 @@ Lectura: una sola petición `chunk_size=68` desde `0x1000` + override desde `0x1
 | TIM_BAT_DOC_DLY | 0x101E | 300 s | Retardo protección sobrecorriente descarga |
 | TIM_BAT_DOC_PR_DLY | 0x1020 | 60 s | Recuperación sobrecorriente descarga |
 | TIM_BAT_SCP_PR_DLY | 0x1022 | 15 s | Recuperación cortocircuito |
-| TIM_PRODISCHARGE | 0x1086 | 0 s | Tiempo pre-descarga |
-| TIM_SMART_SLEEP | 0x108C | 0 h | Tiempo smart sleep |
+| TIM_PRODISCHARGE | 0x110C | 5 s | Tiempo pre-descarga |
+| TIM_SMART_SLEEP | 0x1118 | 6144 (ver nota ⁴) | Tiempo smart sleep |
 
 #### Switches y otros
 
@@ -226,8 +226,33 @@ Lectura: una sola petición `chunk_size=68` desde `0x1000` + override desde `0x1
 | CELL_COUNT | 0x1036 | UINT32 | 16 | Número de celdas configurado |
 | CAP_BAT_CELL | 0x103E | UINT32 | 314000 mAh | Capacidad nominal |
 | SCP_DELAY | 0x1040 | UINT32 | 30 µs | Retardo protección cortocircuito |
-| DEV_ADDR | 0x1084 | UINT32 | 1 | Modbus Unit ID |
-| CONFIG_FLAGS | 0x108A | UINT16 | bitmask | Flags de configuración |
+| DEV_ADDR | 0x1108 | UINT32 | 1 | Modbus Unit ID |
+| CONFIG_FLAGS | 0x1114 | UINT16 | bitmask | Flags de configuración (ver §2.3.1) |
+
+> ⁴ `TIM_SMART_SLEEP` decodifica a 6144 con Smart Sleep OFF — probablemente requiere partir el registro en byte alto/bajo (UINT8) en vez de leerlo como UINT16 completo; no verificado en profundidad, campo de baja prioridad no usado en telemetría.
+
+##### 2.3.1 Corrección de direcciones 2026-10-05: DEV_ADDR / TIM_PRODISCHARGE / CONFIG_FLAGS / TIM_SMART_SLEEP
+
+Estos cuatro registros estaban mal direccionados desde el principio (`0x1084`, `0x1086`, `0x108A`, `0x108C`), heredados de aplicar la fórmula `byte_offset/2 + 0x1000` del documento oficial V1.1 — fórmula que **sí** es correcta para el resto del bloque `0x1000–0x1043` (voltajes, corrientes, temperaturas, switches principales, verificados empíricamente), pero deja de aplicar a partir del byte offset `0x100` del documento. A partir de ahí el firmware v27 usa `addr = 0x1000 + byte_offset` directo, **sin dividir por 2**:
+
+| Campo | Byte offset (doc V1.1) | Fórmula vieja (incorrecta) | Dirección real |
+|---|---|---|---|
+| DEV_ADDR | 0x108 (264) | `0x1000 + 264/2` = `0x1084` | **`0x1000 + 264`** = `0x1108` |
+| TIM_PRODISCHARGE | 0x10C (268) | `0x1086` | **`0x110C`** |
+| CONFIG_FLAGS | 0x114 (276) | `0x108A` | **`0x1114`** |
+| TIM_SMART_SLEEP | 0x118 (280) | `0x108C` | **`0x1118`** |
+
+**Síntoma:** con las direcciones viejas, `DEV_ADDR` leía `3420` (en realidad el valor de `VOL_START_BALAN`, filtrado de una página vecina) en vez de `1`, y `CONFIG_FLAGS` leía siempre `0` — por lo que `CONFIG_FLAGS_DECODED` (que incluye **"Modo flotante"**, bit 9) nunca reflejaba el estado real.
+
+**Verificación:** confirmado en vivo contra el hardware (HW 19A, FW 19.27) y cruzado contra una captura de la app Bluetooth del BMS — `DEV_ADDR=1` (= Unit ID real) y `CONFIG_FLAGS` bit9=1 (= "Charging Float Mode" ON en la app, único flag activo de los 9 mostrados). Dirección real localizada gracias al proyecto comunitario [phinix-org/Multiple-JK-BMS-by-Modbus-RS485](https://github.com/phinix-org/Multiple-JK-BMS-by-Modbus-RS485) (ESPHome, ~8300 instalaciones), que documenta `address: 0x1114` explícitamente para este registro.
+
+**Lectura:** al no caber en el chunk de 68 words que cubre `0x1000–0x1043`, ni poder leerse en una sola petición combinada desde `0x1108` (lanza excepción Modbus — cruza otro límite de página interno), se leen en 4 peticiones separadas:
+```python
+for addr, count in [(0x1108, 2), (0x110C, 2), (0x1114, 1), (0x1118, 1)]:
+    page = self.read_holding_registers(addr, count)
+```
+
+Nota: `CELL_CON_WIRE_RES` (resistencias de cableado 0–31, no publicado en MQTT/webhook) probablemente tiene el mismo problema para sus dos últimas entradas (byte offset ≥0x100) — no corregido por no afectar a la telemetría publicada.
 
 ---
 
@@ -246,10 +271,11 @@ El JK BMS FW v27 **no soporta acceso aleatorio** a registros Modbus. La direcci�
 mem = self._read_block(0x1400, 0x48, chunk_size=72)
 ```
 
-**Bloque 0x1000 (Config):** primera petición de 68 words cubre `0x1000–0x1043`. Los registros `0x1084–0x108D` requieren una petición dedicada desde su propia página:
+**Bloque 0x1000 (Config):** primera petición de 68 words cubre `0x1000–0x1043`. `DEV_ADDR`/`TIM_PRODISCHARGE`/`CONFIG_FLAGS`/`TIM_SMART_SLEEP` viven en `0x1108–0x1118` (no en `0x1084–0x108D`, ver §2.3.1) y se leen en 4 peticiones dedicadas:
 ```python
 mem = self._read_block(0x1000, 0x8E, chunk_size=68)
-page1084 = self.read_holding_registers(0x1084, 10)  # DEV_ADDR, timers, flags
+for addr, count in [(0x1108, 2), (0x110C, 2), (0x1114, 1), (0x1118, 1)]:
+    page = self.read_holding_registers(addr, count)  # DEV_ADDR, TIM_PRODISCHARGE, CONFIG_FLAGS, TIM_SMART_SLEEP
 ```
 
 **Bloque 0x1200 (Realtime):** múltiples rangos naturales + cuatro overrides dedicados:
@@ -428,6 +454,8 @@ El payload de `<device>/state` es un JSON plano con todos los campos del disposi
 ```
 
 El mismo payload (mismos metadatos incluidos) es el que recibe el webhook secundario — ver sección 5.7.
+
+Desde 2026-10-05, el JK BMS publica el bloque de configuración **completo** (91 campos en total: switches, protecciones de voltaje/corriente/temperatura, `DEV_ADDR`, `CELL_COUNT`, `CONFIG_FLAGS`/`CONFIG_FLAGS_DECODED`, etc.), no solo un subconjunto de 5 campos como antes. **Ver `doc/PARAMS_CONFIG.md` para el contrato completo de estos campos de configuración** — valores posibles, significado de cada uno y notas de qué puede faltar y cuándo.
 
 #### 5.2.1 Metadatos reservados (`_schema_version`, `_observed_at`)
 
