@@ -79,15 +79,46 @@ DEYE_HYBRID_REGISTERS = {
             {"name": "GRID_CONNECTED", "address": 194, "count": 1, "type": "U16"},
         ]
     },
+    # 200-240: límites y protecciones de batería. Verificado en vivo y cruzado
+    # contra doc Modbus oficial monofásico Deye/Sunsynk — ver doc/PARAMS_CONFIG_DEYE.md.
+    "Battery_Settings": {
+        "base": 200,
+        "count": 41,
+        "registers": [
+            {"name": "BATTERY_CAPACITY_AH", "address": 204, "count": 1, "type": "U16", "unit": "Ah", "discovery": False},
+            {"name": "BATTERY_MAX_CHARGE_A", "address": 210, "count": 1, "type": "U16", "unit": "A", "discovery": False},
+            {"name": "BATTERY_MAX_DISCHARGE_A", "address": 211, "count": 1, "type": "U16", "unit": "A", "discovery": False},
+            {"name": "BATTERY_CONTROL_MODE", "address": 213, "count": 1, "type": "U16", "discovery": False},
+            {"name": "BATTERY_RESISTANCE_MOHM", "address": 215, "count": 1, "type": "U16", "unit": "mΩ", "discovery": False},
+            {"name": "BATTERY_CHARGE_EFFICIENCY_PCT", "address": 216, "count": 1, "type": "U16", "gain": 10, "unit": "%", "discovery": False},
+            {"name": "BATTERY_SHUTDOWN_SOC_PCT", "address": 217, "count": 1, "type": "U16", "unit": "%", "discovery": False},
+            {"name": "BATTERY_RESTART_SOC_PCT", "address": 218, "count": 1, "type": "U16", "unit": "%", "discovery": False},
+            {"name": "BATTERY_LOWBATT_SOC_PCT", "address": 219, "count": 1, "type": "U16", "unit": "%", "discovery": False},
+            {"name": "BATTERY_SHUTDOWN_V", "address": 220, "count": 1, "type": "U16", "gain": 100, "unit": "V", "discovery": False},
+            {"name": "BATTERY_RESTART_V", "address": 221, "count": 1, "type": "U16", "gain": 100, "unit": "V", "discovery": False},
+            {"name": "BATTERY_LOWBATT_V", "address": 222, "count": 1, "type": "U16", "gain": 100, "unit": "V", "discovery": False},
+        ]
+    },
+    # 243-279: modo de trabajo + horario Time of Use completo. Los campos
+    # escalares van por el mecanismo genérico; el bloque TOU (250-279) se
+    # ensambla en arrays de 6 directamente en get_all_data() — ver ahí.
     "Settings": {
         "base": 243,
-        "count": 6,
+        "count": 37,
         "registers": [
             {"name": "PRIORITY_LOAD", "address": 243, "count": 1, "type": "U16"},
+            {"name": "ENERGY_PATTERN", "address": 243, "count": 1, "type": "U16", "discovery": False},
+            {"name": "WORK_MODE", "address": 244, "count": 1, "type": "U16", "discovery": False},
+            {"name": "MAX_SELL_POWER", "address": 245, "count": 1, "type": "U16", "unit": "W", "discovery": False},
+            {"name": "SOLAR_SELL", "address": 247, "count": 1, "type": "U16", "discovery": False},
             {"name": "USE_TIMER",     "address": 248, "count": 1, "type": "U16"},
         ]
     }
 }
+
+WORK_MODE_TEXT = {0: "SellingFirst", 1: "ZeroExportToLoad", 2: "ZeroExportToCT"}
+ENERGY_PATTERN_TEXT = {0: "BatteryPriority", 1: "LoadFirst"}
+BATTERY_CONTROL_MODE_TEXT = {0: "ByVoltage", 1: "BySOC", 2: "NoBattery"}
 
 class DeyeInverterClient(BaseModbusClient):
     """Client for reading Deye Hybrid Inverter data via Modbus TCP."""
@@ -175,8 +206,44 @@ class DeyeInverterClient(BaseModbusClient):
                         if name in ("BATTERY_TEMP", "RADIATOR_TEMP") and val > 100:
                             val = round(val - 100.0, 1)
                         all_data[name] = val
-            
+
+            # Bloque TOU (250-279): 6 franjas horarias, ensambladas como
+            # arrays directamente desde full_block_data (no vía registers[]).
+            # Verificado en vivo, ver doc/PARAMS_CONFIG_DEYE.md §1-2.
+            if group_name == "Settings":
+                def _word(addr):
+                    off = addr - base
+                    return full_block_data[off] if 0 <= off < len(full_block_data) else None
+
+                raw_times = [_word(250 + i) for i in range(6)]
+                raw_power = [_word(256 + i) for i in range(6)]
+                raw_voltage = [_word(262 + i) for i in range(6)]
+                raw_soc = [_word(268 + i) for i in range(6)]
+                raw_gridcharge = [_word(274 + i) for i in range(6)]
+
+                if all(v is not None for v in raw_times):
+                    all_data["TOU_TIME"] = [f"{v // 100:02d}:{v % 100:02d}" for v in raw_times]
+                if all(v is not None for v in raw_power):
+                    all_data["TOU_POWER"] = raw_power
+                if all(v is not None for v in raw_voltage):
+                    all_data["TOU_VOLTAGE"] = [round(v / 100, 2) for v in raw_voltage]
+                if all(v is not None for v in raw_soc):
+                    all_data["TOU_SOC"] = raw_soc
+                if all(v is not None for v in raw_gridcharge):
+                    # bit 0 = Grid Charge enable, confirmado por prueba activa
+                    # (ver doc/PARAMS_CONFIG_DEYE.md §2): 4=OFF, 5=ON.
+                    all_data["TOU_GRID_CHARGE"] = [bool(v & 1) for v in raw_gridcharge]
+
             time.sleep(0.1)
+
+        # Texto legible para los enums de configuración (raw + *_TEXT, mismo
+        # patrón que ALARMS_DECODED/BALAN_STA_TEXT del JK BMS)
+        if "WORK_MODE" in all_data:
+            all_data["WORK_MODE_TEXT"] = WORK_MODE_TEXT.get(all_data["WORK_MODE"], "Unknown")
+        if "ENERGY_PATTERN" in all_data:
+            all_data["ENERGY_PATTERN_TEXT"] = ENERGY_PATTERN_TEXT.get(all_data["ENERGY_PATTERN"], "Unknown")
+        if "BATTERY_CONTROL_MODE" in all_data:
+            all_data["BATTERY_CONTROL_MODE_TEXT"] = BATTERY_CONTROL_MODE_TEXT.get(all_data["BATTERY_CONTROL_MODE"], "Unknown")
 
         if hasattr(self, '_device_sn'):
             all_data['DEVICE_SN'] = self._device_sn

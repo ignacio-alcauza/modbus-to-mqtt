@@ -390,12 +390,21 @@ page12E0 = read_holding_registers(0x12E0, 16)   # TEMP_BAT4 (0x12ED), TEMP_BAT5 
 >
 > `HOUSE_LOAD_POWER` lleva `"discovery": False` en `DEYE_HYBRID_REGISTERS` (`src/devices/deye.py`): sigue en el payload MQTT y en el webhook con normalidad, pero `get_discovery_sensors()` lo omite explícitamente y no genera entidad HA. Este flag es genérico — cualquier registro futuro puede usarlo para excluirse solo del discovery sin afectar a la recolección/publicación.
 
-### 4.6 Configuración (addr 243–248)
+### 4.6 Configuración (addr 200–279)
 
 | Campo | Addr | Tipo | Descripción |
 |---|---|---|---|
 | PRIORITY_LOAD | 243 | U16 | Prioridad de carga (binary_sensor) |
 | USE_TIMER | 248 | U16 | Uso de temporizador (binary_sensor, `payload_on=255`) |
+
+Desde 2026-10-05 se publican además ~25 campos de configuración adicionales
+(Work Mode, Energy Pattern, Solar Sell, Max Sell Power, horario Time of Use
+completo con 5 arrays de 6 franjas, límites y protecciones de batería), todos
+con `discovery: False` — solo para el consumidor webhook (Pulso), sin
+entidades nuevas en HA. **Ver `doc/PARAMS_CONFIG_DEYE.md`** para el mapeo
+completo de registros, el nivel de confianza de cada uno (varios verificados
+por prueba activa, no solo documentación) y el contrato exacto de nombres de
+campo (§6 de ese documento).
 
 ### 4.7 Correcciones aplicadas respecto al código original
 
