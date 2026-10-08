@@ -5,6 +5,11 @@ descrito en la sección 1 ya está en el JSON de estado (`deye_inverter/state`,
 MQTT) y en el webhook hacia Pulso, con `discovery: False` — no genera
 entidades nuevas en Home Assistant.
 
+**Este documento es solo de lectura.** Para que el consumidor *escriba* el
+bloque TOU (`TOU_TIME`/`TOU_POWER`/`TOU_VOLTAGE`/`TOU_SOC`/`TOU_GRID_CHARGE`)
+ver `doc/CONTRACT_DEYE_TOU_WRITE.md` — mismos campos, mismo encoding, vía
+`POST /deye_inverter/tou`.
+
 ---
 
 ## 1. Qué recibe el consumidor

@@ -55,6 +55,52 @@ class BaseModbusClient:
 
         return None
     
+    def write_register(self, address: int, value: int, retries: int = MAX_RETRIES):
+        """Write a single holding register (FC06). Returns True on success."""
+        for attempt in range(retries):
+            try:
+                try:
+                    res = self._client.write_register(address, value, slave=self.unit_id)
+                except TypeError:
+                    res = self._client.write_register(address, value, device_id=self.unit_id)
+
+                if res and not res.isError():
+                    return True
+
+                if res and res.isError():
+                    logger.warning(f"Modbus error writing address {address} (value={value}): {res}")
+
+            except Exception as e:
+                logger.warning(f"Unexpected error writing address {address} (attempt {attempt + 1}/{retries}): {e}")
+
+            if attempt < retries - 1:
+                time.sleep(self.RETRY_DELAY)
+
+        return False
+
+    def write_registers(self, address: int, values: list, retries: int = MAX_RETRIES):
+        """Write multiple contiguous holding registers (FC16). Returns True on success."""
+        for attempt in range(retries):
+            try:
+                try:
+                    res = self._client.write_registers(address, values, slave=self.unit_id)
+                except TypeError:
+                    res = self._client.write_registers(address, values, device_id=self.unit_id)
+
+                if res and not res.isError():
+                    return True
+
+                if res and res.isError():
+                    logger.warning(f"Modbus error writing address {address} (values={values}): {res}")
+
+            except Exception as e:
+                logger.warning(f"Unexpected error writing address {address} (attempt {attempt + 1}/{retries}): {e}")
+
+            if attempt < retries - 1:
+                time.sleep(self.RETRY_DELAY)
+
+        return False
+
     def __enter__(self):
         if not self.connect():
             raise ConnectionError(f"Cannot connect to Modbus TCP device at {self.host}:{self.port}")

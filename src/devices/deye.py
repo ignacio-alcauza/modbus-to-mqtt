@@ -1,3 +1,4 @@
+import re
 import struct
 import time
 import logging
@@ -119,6 +120,117 @@ DEYE_HYBRID_REGISTERS = {
 WORK_MODE_TEXT = {0: "SellingFirst", 1: "ZeroExportToLoad", 2: "ZeroExportToCT"}
 ENERGY_PATTERN_TEXT = {0: "BatteryPriority", 1: "LoadFirst"}
 BATTERY_CONTROL_MODE_TEXT = {0: "ByVoltage", 1: "BySOC", 2: "NoBattery"}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Escritura de Time Of Use (TOU) — contrato de ingesta para el consumidor.
+# Direcciones ya verificadas en lectura (ver doc/PARAMS_CONFIG_DEYE.md §A.1-2).
+# Escritura confirmada en vivo el 2026-10-08: el inversor solo implementa
+# FC16 (write multiple registers) — FC06 (single) da timeout, no lo soporta.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_HHMM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+# base addr + rango de validación por campo. TOU_TIME y TOU_GRID_CHARGE no
+# llevan min/max porque su validación es de formato (HH:MM / booleano), no
+# numérica.
+TOU_FIELD_SPECS = {
+    "TOU_TIME":        {"base": 250},
+    "TOU_POWER":       {"base": 256, "min": 0,    "max": 12000},
+    "TOU_VOLTAGE":     {"base": 262, "min": 38.0, "max": 61.0},
+    "TOU_SOC":         {"base": 268, "min": 0,    "max": 100},
+    "TOU_GRID_CHARGE": {"base": 274},
+}
+
+# Grupos de telemetría en vivo: fluctúan solo por el paso del tiempo, nunca
+# por una escritura de TOU. Se excluyen de la comprobación "solo ha cambiado
+# el TOU" en write_tou_with_full_verification() para no generar falsos
+# positivos en cada ciclo.
+_LIVE_TELEMETRY_GROUPS = {"Status", "Energy_Data", "Live_Data_1", "Live_Data_2"}
+
+
+def _live_telemetry_field_names() -> set:
+    names = set()
+    for group_name, group_def in DEYE_HYBRID_REGISTERS.items():
+        if group_name in _LIVE_TELEMETRY_GROUPS:
+            for reg in group_def["registers"]:
+                names.add(reg["name"])
+    return names
+
+
+LIVE_TELEMETRY_FIELDS = _live_telemetry_field_names()
+
+
+def validate_tou_payload(payload: dict):
+    """Valida un payload de escritura TOU (parcial: cualquier subconjunto de
+    los 5 campos). Devuelve (cleaned, errors):
+      - cleaned: dict solo con los campos que pasaron validación, valores
+        tal cual los mandó el consumidor (sin codificar a registros Modbus).
+      - errors: dict campo -> mensaje de error. Si hay errors, cleaned debe
+        descartarse entero (no se escribe nada parcialmente válido).
+    """
+    if not isinstance(payload, dict):
+        return {}, {"_payload": "body must be a JSON object"}
+
+    errors = {}
+    unknown = sorted(set(payload.keys()) - set(TOU_FIELD_SPECS.keys()))
+    if unknown:
+        errors["_unknown_fields"] = unknown
+
+    cleaned = {}
+    for name, spec in TOU_FIELD_SPECS.items():
+        if name not in payload:
+            continue
+        value = payload[name]
+        if not isinstance(value, list) or len(value) != 6:
+            errors[name] = "must be an array of exactly 6 elements"
+            continue
+
+        if name == "TOU_TIME":
+            if all(isinstance(v, str) and _HHMM_RE.match(v) for v in value):
+                cleaned[name] = value
+            else:
+                errors[name] = "each element must be 'HH:MM' (00:00-23:59)"
+
+        elif name == "TOU_GRID_CHARGE":
+            if all(isinstance(v, bool) for v in value):
+                cleaned[name] = value
+            else:
+                errors[name] = "each element must be true/false"
+
+        else:  # TOU_POWER, TOU_VOLTAGE, TOU_SOC — numéricos con rango
+            lo, hi = spec["min"], spec["max"]
+            if all(isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi for v in value):
+                cleaned[name] = value
+            else:
+                errors[name] = f"each element must be a number between {lo} and {hi}"
+
+    if not cleaned and not errors:
+        errors["_payload"] = (
+            "at least one of TOU_TIME, TOU_POWER, TOU_VOLTAGE, TOU_SOC, "
+            "TOU_GRID_CHARGE is required"
+        )
+
+    return cleaned, errors
+
+
+def diff_unexpected_changes(before: dict, after: dict, expected_changed: set) -> dict:
+    """Compara dos snapshots de get_all_data() e ignora: _raw_data, los campos
+    de telemetría en vivo (fluctúan solos) y los campos que el propio
+    consumidor pidió cambiar. Lo que quede y sea distinto es una señal de que
+    la escritura tocó algo que no debía — ver §A.6/§2 de
+    doc/CONTRACT_DEYE_TOU_WRITE.md.
+    """
+    keys = (set(before.keys()) | set(after.keys()))
+    keys -= {"_raw_data"}
+    keys -= LIVE_TELEMETRY_FIELDS
+    keys -= expected_changed
+
+    unexpected = {}
+    for key in keys:
+        if before.get(key) != after.get(key):
+            unexpected[key] = {"before": before.get(key), "after": after.get(key)}
+    return unexpected
+
 
 class DeyeInverterClient(BaseModbusClient):
     """Client for reading Deye Hybrid Inverter data via Modbus TCP."""
@@ -252,6 +364,78 @@ class DeyeInverterClient(BaseModbusClient):
             all_data['MODEL'] = self.model
 
         return all_data
+
+    def _write_contiguous(self, base_addr: int, raw_values: List[int]) -> dict:
+        """Escribe un bloque contiguo vía FC16 y relee para verificar. Debe
+        llamarse dentro de una conexión abierta (`with client:`)."""
+        ok = self.write_registers(base_addr, raw_values)
+        if not ok:
+            return {"ok": False, "error": "modbus_write_failed", "readback": None}
+
+        readback = self.read_holding_registers(base_addr, len(raw_values))
+        if readback is None:
+            return {"ok": False, "error": "modbus_readback_failed", "readback": None}
+
+        return {"ok": readback == raw_values, "error": None, "readback": readback}
+
+    def write_tou(self, fields: dict) -> dict:
+        """Escribe una actualización parcial de TOU. `fields` debe venir ya
+        validado por validate_tou_payload() — valores tal cual los ve el
+        consumidor (strings "HH:MM", voltios, booleanos), no codificados.
+        Debe llamarse dentro de una conexión abierta (`with client:`).
+        Devuelve {campo: {"ok", "error", "readback"}} — readback ya
+        decodificado al mismo formato que el contrato de lectura.
+        """
+        results = {}
+
+        if "TOU_TIME" in fields:
+            raw = [int(h) * 100 + int(m) for h, m in (s.split(":") for s in fields["TOU_TIME"])]
+            r = self._write_contiguous(TOU_FIELD_SPECS["TOU_TIME"]["base"], raw)
+            if r["readback"] is not None:
+                r["readback"] = [f"{v // 100:02d}:{v % 100:02d}" for v in r["readback"]]
+            results["TOU_TIME"] = r
+
+        if "TOU_POWER" in fields:
+            raw = [int(v) for v in fields["TOU_POWER"]]
+            results["TOU_POWER"] = self._write_contiguous(TOU_FIELD_SPECS["TOU_POWER"]["base"], raw)
+
+        if "TOU_VOLTAGE" in fields:
+            raw = [round(v * 100) for v in fields["TOU_VOLTAGE"]]
+            r = self._write_contiguous(TOU_FIELD_SPECS["TOU_VOLTAGE"]["base"], raw)
+            if r["readback"] is not None:
+                r["readback"] = [round(v / 100, 2) for v in r["readback"]]
+            results["TOU_VOLTAGE"] = r
+
+        if "TOU_SOC" in fields:
+            raw = [int(v) for v in fields["TOU_SOC"]]
+            results["TOU_SOC"] = self._write_contiguous(TOU_FIELD_SPECS["TOU_SOC"]["base"], raw)
+
+        if "TOU_GRID_CHARGE" in fields:
+            base = TOU_FIELD_SPECS["TOU_GRID_CHARGE"]["base"]
+            # Read-modify-write: bit0 es grid charge enable (confirmado por
+            # prueba activa, ver doc/PARAMS_CONFIG_DEYE.md §A.2); los bits
+            # superiores no están identificados y no se tocan.
+            current = self.read_holding_registers(base, 6)
+            if current is None:
+                results["TOU_GRID_CHARGE"] = {"ok": False, "error": "modbus_read_before_write_failed", "readback": None}
+            else:
+                new_values = [(cur & ~1) | (1 if en else 0) for cur, en in zip(current, fields["TOU_GRID_CHARGE"])]
+                ok = self.write_registers(base, new_values)
+                if not ok:
+                    results["TOU_GRID_CHARGE"] = {"ok": False, "error": "modbus_write_failed", "readback": None}
+                else:
+                    readback = self.read_holding_registers(base, 6)
+                    if readback is None:
+                        results["TOU_GRID_CHARGE"] = {"ok": False, "error": "modbus_readback_failed", "readback": None}
+                    else:
+                        decoded = [bool(v & 1) for v in readback]
+                        results["TOU_GRID_CHARGE"] = {
+                            "ok": decoded == fields["TOU_GRID_CHARGE"],
+                            "error": None,
+                            "readback": decoded,
+                        }
+
+        return results
 
     def get_discovery_sensors(self) -> list:
         sensors = []

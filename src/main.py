@@ -1,9 +1,11 @@
+import contextlib
 import time
 import os
 import sys
 import json
 import yaml
 import logging
+import threading
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
@@ -12,6 +14,7 @@ from devices.jkbmsv2 import JKBMSV2Client
 from devices.deye import DeyeInverterClient
 from mqtt.publisher import MQTTPublisher
 from webhook.publisher import WebhookPublisher
+from http_api import start_command_api
 
 logger = configure_logging(logging.INFO)
 
@@ -134,6 +137,12 @@ def main():
         state_topic = f"{subtopic}/state"
         availability_topic = f"{subtopic}/availability"
 
+        # Candado compartido con el servidor de comandos (http_api.py): la
+        # pasarela Elfin EW11A solo admite una conexión Modbus TCP activa a
+        # la vez, así que el loop de lectura periódico y el endpoint de
+        # escritura TOU nunca pueden tocar el inversor en paralelo.
+        deye_lock = threading.Lock()
+
         devices.append({
             "name": "deye_inverter",
             "client": deye,
@@ -143,9 +152,20 @@ def main():
             "debug": deye_conf.get("debug_values", False),
             "firmware_version": deye_conf.get("firmware_version", deye_conf.get("software_version")),
             "hardware_version": deye_conf.get("hardware_version"),
-            "last_run": 0
+            "last_run": 0,
+            "lock": deye_lock,
         })
         logger.info(f"Initialized Deye Inverter at {deye.host}:{deye.port} → state: {state_topic}")
+
+        tou_api_conf = deye_conf.get("tou_write_api", {})
+        if tou_api_conf.get("active", False):
+            start_command_api(
+                deye_client=deye,
+                deye_lock=deye_lock,
+                api_key=os.getenv("DEYE_TOU_API_KEY"),
+                port=tou_api_conf.get("port", 9090),
+                min_interval_seconds=tou_api_conf.get("min_interval_seconds", 5),
+            )
 
     if not devices:
         logger.warning("No active devices found in config.yml. Exiting.")
@@ -198,8 +218,9 @@ def main():
                     logger.debug(f"Querying {dev['name']}...")
                     client = dev["client"]
 
+                    lock_cm = dev.get("lock") or contextlib.nullcontext()
                     try:
-                        with client:
+                        with lock_cm, client:
                             data = client.get_all_data()
                             if data:
                                 if dev["debug"]:

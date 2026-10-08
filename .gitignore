@@ -21,3 +21,6 @@ __pycache__/
 # Application Logs
 logs/*.json
 config.yml
+
+# Backups de escrituras TOU (ver doc/CONTRACT_DEYE_TOU_WRITE.md)
+backups/*.json
