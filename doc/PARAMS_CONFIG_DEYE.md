@@ -8,7 +8,8 @@ entidades nuevas en Home Assistant.
 **Este documento es solo de lectura.** Para que el consumidor *escriba* el
 bloque TOU (`TOU_TIME`/`TOU_POWER`/`TOU_VOLTAGE`/`TOU_SOC`/`TOU_GRID_CHARGE`)
 ver `doc/CONTRACT_DEYE_TOU_WRITE.md` — mismos campos, mismo encoding, vía
-`POST /deye_inverter/tou`.
+`POST /deye_inverter/tou`. La corriente de carga desde red (`GRID_CHARGE_A`, reg 230)
+se documenta en `doc/CONTRACT_DEYE_GRID_CHARGE_A.md`.
 
 ---
 
@@ -258,7 +259,7 @@ previsión de llegar a verificarse.
 ### A.5 Generador / carga desde red (Battery Setting-3) — identificado, no publicado
 
 Estos registros se identificaron durante la investigación pero **no se
-publican** (sin generador conectado en esta instalación, bajo interés para
+publican** (excepto el 230, ver su fila) (sin generador conectado en esta instalación, bajo interés para
 Pulso):
 
 | Addr | Campo | Valor en vivo | Notas |
@@ -270,7 +271,7 @@ Pulso):
 | 227 | Corriente de carga del generador (A) | 40 | ídem |
 | 228 | Voltaje de arranque de carga desde red (×0.01V) | 4900 → 49.00V | — |
 | 229 | SOC de arranque de carga desde red (%) | 10 | — |
-| 230 | Corriente de carga desde red (A) | 18 | — |
+| 230 | Corriente de carga desde red (A) — **publicado como `GRID_CHARGE_A` solo en el webhook (no MQTT/HA) y escribible por FC16**; ver `doc/CONTRACT_DEYE_GRID_CHARGE_A.md` | 18 | ✓✓ Escritura verificada en vivo 2026-10-12 |
 | 231 | Gen Charge enable (`0`/`1`) | 0 | Deshabilitado |
 | 232 | Grid Charge enable (`0`/`1`) — switch maestro, distinto de los flags por franja de §A.2 | 1 | ✓ Habilitado, coherente con "Time1 Grid Charge: ON" |
 | 233 | Solar Input as PSU (`0`=solar, `1`=PSU) | 0 | Modo normal |

@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 from utils.logger import configure_logging
 from devices.jkbmsv2 import JKBMSV2Client
-from devices.deye import DeyeInverterClient
+from devices.deye import DeyeInverterClient, WEBHOOK_ONLY_FIELDS
 from mqtt.publisher import MQTTPublisher
 from webhook.publisher import WebhookPublisher
 from http_api import start_command_api
@@ -237,7 +237,8 @@ def main():
 
                                 if mqtt_enabled:
                                     publisher.publish_raw(dev["availability_topic"], "online", retain=True)
-                                    publisher.publish_data(dev["topic"], data)
+                                    mqtt_data = {k: v for k, v in data.items() if k not in WEBHOOK_ONLY_FIELDS}
+                                    publisher.publish_data(dev["topic"], mqtt_data)
                                 webhook.send(dev["name"], data)
                             else:
                                 logger.warning(f"No data received from {dev['name']}")

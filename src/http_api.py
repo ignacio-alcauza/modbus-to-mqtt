@@ -16,17 +16,20 @@ import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from devices.deye import validate_tou_payload, diff_unexpected_changes
+from devices.deye import (
+    validate_tou_payload, diff_unexpected_changes,
+    validate_grid_charge_payload, compute_grid_charge_suggestion,
+)
 
 logger = logging.getLogger("modbus2mqtt.http_api")
 
 BACKUP_DIR = "backups"
 
 
-def _save_backup(snapshot: dict, suffix: str) -> str:
+def _save_backup(snapshot: dict, suffix: str, prefix: str = "deye_inverter_tou") -> str:
     os.makedirs(BACKUP_DIR, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    path = os.path.join(BACKUP_DIR, f"deye_inverter_tou_{ts}_{suffix}.json")
+    path = os.path.join(BACKUP_DIR, f"{prefix}_{ts}_{suffix}.json")
     with open(path, "w") as f:
         json.dump(snapshot, f, indent=2, ensure_ascii=False)
     return path
@@ -53,8 +56,27 @@ class DeyeTouRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _check_rate_limit(self) -> bool:
+        """El rate limit solo cuenta intentos de escritura ya autenticados y
+        validados — una petición rechazada por 401/400 nunca toca el
+        inversor, así que no debe consumir la ventana de min_interval_seconds.
+        Envía el 429 y devuelve False si no toca aún."""
+        with self._rate_lock:
+            now = time.time()
+            elapsed = now - DeyeTouRequestHandler._last_write_ts
+            if elapsed < self.min_interval_seconds:
+                self._send_json(429, {
+                    "ok": False,
+                    "error": "rate_limited",
+                    "retry_after_seconds": round(self.min_interval_seconds - elapsed, 1),
+                })
+                return False
+            DeyeTouRequestHandler._last_write_ts = now
+            return True
+
     def do_POST(self):
-        if self.path.rstrip("/") != "/deye_inverter/tou":
+        route = self.path.rstrip("/")
+        if route not in ("/deye_inverter/tou", "/deye_inverter/grid_charge_a"):
             self._send_json(404, {"ok": False, "error": "not_found"})
             return
 
@@ -70,27 +92,113 @@ class DeyeTouRequestHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"ok": False, "error": "invalid_json"})
             return
 
+        if route == "/deye_inverter/grid_charge_a":
+            requested, errors = validate_grid_charge_payload(payload)
+            if errors:
+                self._send_json(400, {"ok": False, "error": "validation_failed", "fields": errors})
+                return
+            # Sin GRID_CHARGE_A = solo consulta: no escribe, no consume rate limit.
+            if requested is not None and not self._check_rate_limit():
+                return
+            self._handle_grid_charge(requested)
+            return
+
         cleaned, errors = validate_tou_payload(payload)
         if errors:
             self._send_json(400, {"ok": False, "error": "validation_failed", "fields": errors})
             return
 
-        # El rate limit solo cuenta intentos de escritura ya autenticados y
-        # validados — una petición rechazada por 401/400 nunca toca el
-        # inversor, así que no debe consumir la ventana de min_interval_seconds.
-        with self._rate_lock:
-            now = time.time()
-            elapsed = now - DeyeTouRequestHandler._last_write_ts
-            if elapsed < self.min_interval_seconds:
-                self._send_json(429, {
-                    "ok": False,
-                    "error": "rate_limited",
-                    "retry_after_seconds": round(self.min_interval_seconds - elapsed, 1),
-                })
-                return
-            DeyeTouRequestHandler._last_write_ts = now
+        if not self._check_rate_limit():
+            return
 
         self._handle_tou_write(cleaned)
+
+    def _handle_grid_charge(self, requested):
+        """Lee estado + hora del inversor, calcula la sugerencia y, si hay
+        `requested`, escribe GRID_CHARGE_A con backup pre/post y diff."""
+        pre_backup_path = post_backup_path = None
+        write_result = None
+        after = None
+        with self.deye_lock:
+            try:
+                with self.deye_client:
+                    before = self.deye_client.get_all_data()
+                    now_hhmm = self.deye_client.read_inverter_time() if before else None
+                    if not before or now_hhmm is None or before.get("GRID_CHARGE_A") is None:
+                        logger.error("GRID_CHARGE_A: no se pudo leer estado/hora del inversor; abortado.")
+                        self._send_json(502, {"ok": False, "error": "inverter_unreachable_pre_read"})
+                        return
+
+                    previous = before["GRID_CHARGE_A"]
+                    max_a = before.get("BATTERY_MAX_CHARGE_A")
+                    if requested is not None and max_a is not None and requested > max_a:
+                        self._send_json(400, {
+                            "ok": False, "error": "validation_failed",
+                            "fields": {"GRID_CHARGE_A": f"exceeds BATTERY_MAX_CHARGE_A ({max_a} A)"},
+                        })
+                        return
+
+                    will_write = requested is not None and requested != previous
+                    if will_write:
+                        pre_backup_path = _save_backup(before, "pre", "deye_inverter_gridchg")
+                        logger.info(f"GRID_CHARGE_A write: backup pre-escritura en {pre_backup_path}")
+                        write_result = self.deye_client.write_grid_charge_a(requested)
+                        after = self.deye_client.get_all_data()
+            except ConnectionError as e:
+                logger.error(f"GRID_CHARGE_A: no se pudo conectar al inversor: {e}")
+                self._send_json(502, {"ok": False, "error": "inverter_unreachable"})
+                return
+            except Exception as e:
+                logger.error(f"GRID_CHARGE_A: error inesperado: {e}")
+                self._send_json(502, {"ok": False, "error": "write_failed", "detail": str(e)})
+                return
+
+        # La sugerencia se calcula con el estado leído ANTES de escribir.
+        suggestion = compute_grid_charge_suggestion(before, now_hhmm)
+
+        applied = previous
+        unexpected = {}
+        ok = True
+        if write_result is not None:
+            applied = write_result["readback"][0] if write_result["readback"] else None
+            ok = bool(write_result["ok"])
+            if after:
+                post_backup_path = _save_backup(after, "post", "deye_inverter_gridchg")
+                unexpected = diff_unexpected_changes(before, after, expected_changed={"GRID_CHARGE_A"})
+                if unexpected:
+                    logger.error(f"GRID_CHARGE_A write: cambios inesperados: {list(unexpected.keys())}")
+            else:
+                ok = False
+                write_result["error"] = write_result.get("error") or "inverter_unreachable_post_read"
+            suggestion_applied = applied
+        else:
+            suggestion_applied = previous
+
+        calc = suggestion.get("calc")
+        if calc and suggestion_applied is not None and write_result is not None:
+            # Recalcula los indicadores "aplicado vs sugerido" con el valor ya fijado.
+            state_after = dict(before, GRID_CHARGE_A=suggestion_applied)
+            suggestion = compute_grid_charge_suggestion(state_after, now_hhmm)
+
+        ok = ok and not unexpected
+        logger.info(f"GRID_CHARGE_A request: requested={requested} previous={previous} "
+                    f"applied={applied} suggested={suggestion.get('suggested_grid_charge_a')} ok={ok}")
+
+        self._send_json(200 if ok else 207, {
+            "ok": ok,
+            "GRID_CHARGE_A": applied,
+            "SUGGESTED_GRID_CHARGE_A": suggestion.get("suggested_grid_charge_a"),
+            "write": {
+                "requested": requested,
+                "previous": previous,
+                "written": write_result is not None,
+                "ok": None if write_result is None else bool(write_result["ok"]),
+                "error": None if write_result is None else write_result.get("error"),
+            },
+            "suggestion": suggestion,
+            "unexpected_changes": unexpected,
+            "backup": {"pre": pre_backup_path, "post": post_backup_path},
+        })
 
     def _handle_tou_write(self, cleaned: dict):
         with self.deye_lock:
@@ -172,5 +280,5 @@ def start_command_api(deye_client, deye_lock, api_key: str, port: int = 9090,
     server = ThreadingHTTPServer((bind, port), DeyeTouRequestHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True, name="deye-tou-api")
     thread.start()
-    logger.info(f"Deye TOU write API escuchando en {bind}:{port} (POST /deye_inverter/tou)")
+    logger.info(f"Deye TOU write API escuchando en {bind}:{port} (POST /deye_inverter/tou, /deye_inverter/grid_charge_a)")
     return server

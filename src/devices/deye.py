@@ -1,3 +1,4 @@
+import math
 import re
 import struct
 import time
@@ -98,6 +99,10 @@ DEYE_HYBRID_REGISTERS = {
             {"name": "BATTERY_SHUTDOWN_V", "address": 220, "count": 1, "type": "U16", "gain": 100, "unit": "V", "discovery": False},
             {"name": "BATTERY_RESTART_V", "address": 221, "count": 1, "type": "U16", "gain": 100, "unit": "V", "discovery": False},
             {"name": "BATTERY_LOWBATT_V", "address": 222, "count": 1, "type": "U16", "gain": 100, "unit": "V", "discovery": False},
+            # Corriente de carga desde red (Battery Setting-3). Escribible vía
+            # FC16 (verificado en vivo 2026-10-12). Solo se envía al webhook,
+            # no al topic MQTT — ver WEBHOOK_ONLY_FIELDS.
+            {"name": "GRID_CHARGE_A", "address": 230, "count": 1, "type": "U16", "unit": "A", "discovery": False},
         ]
     },
     # 243-279: modo de trabajo + horario Time of Use completo. Los campos
@@ -120,6 +125,9 @@ DEYE_HYBRID_REGISTERS = {
 WORK_MODE_TEXT = {0: "SellingFirst", 1: "ZeroExportToLoad", 2: "ZeroExportToCT"}
 ENERGY_PATTERN_TEXT = {0: "BatteryPriority", 1: "LoadFirst"}
 BATTERY_CONTROL_MODE_TEXT = {0: "ByVoltage", 1: "BySOC", 2: "NoBattery"}
+
+# Campos que viajan solo al webhook y se eliminan del payload MQTT/HA.
+WEBHOOK_ONLY_FIELDS = {"GRID_CHARGE_A"}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Escritura de Time Of Use (TOU) — contrato de ingesta para el consumidor.
@@ -211,6 +219,161 @@ def validate_tou_payload(payload: dict):
         )
 
     return cleaned, errors
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Escritura de GRID_CHARGE_A (reg 230) + cálculo de corriente sugerida.
+# Contrato: doc/CONTRACT_DEYE_GRID_CHARGE_A.md
+# ─────────────────────────────────────────────────────────────────────────────
+
+GRID_CHARGE_A_ADDR = 230
+GRID_CHARGE_A_MIN = 1
+GRID_CHARGE_A_MAX = 185
+
+# Registros de reloj del inversor (hora local del propio inversor, la misma
+# con la que se evalúan las franjas TOU): 22=(año-2000)<<8|mes,
+# 23=día<<8|hora, 24=minuto<<8|segundo. Verificado en vivo 2026-10-12.
+INVERTER_CLOCK_ADDR = 22
+
+# Margen sobre la corriente mínima teórica: cubre la reducción de corriente
+# del BMS cerca del tope de SoC, balanceo y pérdidas no modeladas.
+SUGGESTION_SAFETY_MARGIN = 1.25
+SUGGESTION_MIN_A = 5
+
+
+def validate_grid_charge_payload(payload: dict):
+    """Devuelve (requested, errors). `requested` es None si el body no trae
+    GRID_CHARGE_A (modo solo-consulta: calcula la sugerencia sin escribir)."""
+    if not isinstance(payload, dict):
+        return None, {"_payload": "body must be a JSON object"}
+
+    errors = {}
+    unknown = sorted(set(payload.keys()) - {"GRID_CHARGE_A"})
+    if unknown:
+        errors["_unknown_fields"] = unknown
+
+    requested = None
+    if "GRID_CHARGE_A" in payload:
+        v = payload["GRID_CHARGE_A"]
+        if isinstance(v, bool) or not isinstance(v, int) or not (GRID_CHARGE_A_MIN <= v <= GRID_CHARGE_A_MAX):
+            errors["GRID_CHARGE_A"] = f"must be an integer between {GRID_CHARGE_A_MIN} and {GRID_CHARGE_A_MAX}"
+        else:
+            requested = v
+    return requested, errors
+
+
+def compute_grid_charge_suggestion(state: dict, now_hhmm: tuple) -> dict:
+    """Calcula la corriente de carga desde red necesaria para llegar al SoC
+    objetivo de la franja TOU con carga de red, a partir de un snapshot de
+    get_all_data() y la hora del inversor (h, m). Función pura, sin I/O.
+    Metodología: doc/CONTRACT_DEYE_GRID_CHARGE_A.md §4.
+    """
+    now_min = now_hhmm[0] * 60 + now_hhmm[1]
+    times = state.get("TOU_TIME")
+    gc_flags = state.get("TOU_GRID_CHARGE")
+    soc_targets = state.get("TOU_SOC")
+    result = {"status": None, "suggested_grid_charge_a": None, "slot": None,
+              "inputs": None, "calc": None, "warnings": []}
+
+    if not (times and gc_flags and soc_targets):
+        result["status"] = "tou_unavailable"
+        return result
+
+    starts = [int(t[:2]) * 60 + int(t[3:]) for t in times]
+    n = len(starts)
+    slots = []
+    for i in range(n):
+        dur = (starts[(i + 1) % n] - starts[i]) % 1440 or 1440
+        elapsed = (now_min - starts[i]) % 1440
+        slots.append({"index": i, "start": times[i], "end": times[(i + 1) % n],
+                      "duration_min": dur, "active": elapsed < dur,
+                      "elapsed_min": elapsed, "starts_in_min": (starts[i] - now_min) % 1440})
+
+    charge_slots = [s for s in slots if gc_flags[s["index"]]]
+    if not charge_slots:
+        result["status"] = "no_grid_charge_slot"
+        return result
+
+    active = [s for s in charge_slots if s["active"]]
+    if active:
+        slot = active[0]
+        remaining_min = slot["duration_min"] - slot["elapsed_min"]
+    else:
+        slot = min(charge_slots, key=lambda s: s["starts_in_min"])
+        remaining_min = slot["duration_min"]
+
+    idx = slot["index"]
+    target = soc_targets[idx]
+    soc = state.get("BATTERY_SOC")
+    cap_ah = state.get("BATTERY_CAPACITY_AH")
+    volt = state.get("BATTERY_VOLTAGE")
+    max_a = state.get("BATTERY_MAX_CHARGE_A")
+    eff = (state.get("BATTERY_CHARGE_EFFICIENCY_PCT") or 99.0) / 100
+    applied = state.get("GRID_CHARGE_A")
+
+    result["slot"] = {"index": idx, "start": slot["start"], "end": slot["end"],
+                      "active_now": slot["active"], "remaining_min": remaining_min,
+                      "starts_in_min": None if slot["active"] else slot["starts_in_min"],
+                      "target_soc_pct": target}
+    result["inputs"] = {"inverter_time": f"{now_hhmm[0]:02d}:{now_hhmm[1]:02d}",
+                        "battery_soc_pct": soc, "battery_capacity_ah": cap_ah,
+                        "battery_voltage_v": volt, "battery_max_charge_a": max_a,
+                        "charge_efficiency": eff, "house_load_power_w": state.get("HOUSE_LOAD_POWER"),
+                        "tou_power_w": (state.get("TOU_POWER") or [None] * n)[idx],
+                        "safety_margin": SUGGESTION_SAFETY_MARGIN}
+
+    if None in (soc, cap_ah, volt, max_a):
+        result["status"] = "inputs_unavailable"
+        return result
+
+    # Franja aún no iniciada: el SoC bajará hasta el inicio. Se calcula con el
+    # peor caso razonable: el menor entre el SoC actual y el SoC mínimo
+    # configurado en las franjas sin carga de red (el suelo al que baja de noche).
+    soc_for_calc = soc
+    if not slot["active"]:
+        floors = [v for i, v in enumerate(soc_targets) if not gc_flags[i]]
+        if floors and min(floors) < soc:
+            soc_for_calc = min(floors)
+            result["warnings"].append(
+                f"slot has not started; calculated assuming start SoC {soc_for_calc}% "
+                f"(lowest TOU_SOC of non-grid-charge slots) instead of current {soc}%")
+    result["inputs"]["assumed_start_soc_pct"] = soc_for_calc
+
+    missing_pct = target - soc_for_calc
+    if missing_pct <= 0:
+        result["status"] = "target_reached"
+        result["calc"] = {"missing_pct": 0}
+        return result
+
+    needed_ah = missing_pct / 100 * cap_ah / eff
+    hours = max(remaining_min, 1) / 60
+    min_a = needed_ah / hours
+    suggested = max(SUGGESTION_MIN_A, math.ceil(min_a * SUGGESTION_SAFETY_MARGIN))
+    feasible = min_a <= max_a
+    if suggested > max_a:
+        suggested = max_a
+        result["warnings"].append(
+            f"required current exceeds BATTERY_MAX_CHARGE_A ({max_a} A); suggestion capped"
+            if not feasible else "margin-adjusted suggestion capped at BATTERY_MAX_CHARGE_A")
+
+    tou_power = result["inputs"]["tou_power_w"]
+    if tou_power is not None and suggested * volt > tou_power:
+        result["warnings"].append(
+            f"suggested charge power (~{round(suggested * volt)} W) exceeds TOU_POWER of the slot ({tou_power} W)")
+
+    projected = None
+    if applied is not None:
+        projected = min(100.0, round(soc_for_calc + applied * eff * hours / cap_ah * 100, 1))
+
+    result["calc"] = {"missing_pct": round(missing_pct, 1), "needed_ah": round(needed_ah, 1),
+                      "remaining_hours": round(hours, 2), "min_current_a": round(min_a, 1),
+                      "feasible": feasible,
+                      "applied_meets_minimum": None if applied is None else applied >= math.ceil(min_a),
+                      "applied_meets_suggested": None if applied is None else applied >= suggested,
+                      "projected_soc_at_slot_end_pct": projected}
+    result["status"] = "ok" if feasible else "infeasible"
+    result["suggested_grid_charge_a"] = suggested
+    return result
 
 
 def diff_unexpected_changes(before: dict, after: dict, expected_changed: set) -> dict:
@@ -436,6 +599,20 @@ class DeyeInverterClient(BaseModbusClient):
                         }
 
         return results
+
+    def read_inverter_time(self):
+        """Hora local (h, m) del reloj del inversor, o None si falla."""
+        regs = self.read_holding_registers(INVERTER_CLOCK_ADDR, 3)
+        if not regs:
+            return None
+        hour, minute = regs[1] & 0xFF, regs[2] >> 8
+        if hour > 23 or minute > 59:
+            return None
+        return hour, minute
+
+    def write_grid_charge_a(self, value: int) -> dict:
+        """Escribe GRID_CHARGE_A (reg 230, FC16) y relee. Dentro de `with client:`."""
+        return self._write_contiguous(GRID_CHARGE_A_ADDR, [int(value)])
 
     def get_discovery_sensors(self) -> list:
         sensors = []
