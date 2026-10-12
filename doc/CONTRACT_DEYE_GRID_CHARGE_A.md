@@ -158,12 +158,13 @@ desajustes de zona horaria); si ninguna lo está, la **próxima en empezar**.
 **4.2 Tiempo restante.** Franja activa: `fin − ahora`. Franja futura: duración
 completa. (Mínimo 1 min para evitar divisiones por cero.)
 
-**4.3 SoC de partida.** Franja activa: `BATTERY_SOC` actual. Franja **futura**:
-el SoC bajará hasta que empiece, así que se usa el peor caso razonable: el
-menor entre `BATTERY_SOC` y el mínimo `TOU_SOC` de las franjas sin carga de
-red; se avisa en `warnings`. **Recomendación: llamar justo al inicio de la
-franja (p. ej. 00:00–00:10) para tener el SoC real**, y opcionalmente repetir
-una vez más tarde en la franja.
+**4.3 SoC de partida.** Siempre el `BATTERY_SOC` **del momento de la
+consulta**, tanto si la franja está activa como si no. Si la franja aún no ha
+empezado se añade un aviso en `warnings`: el SoC real al inicio será menor
+(la batería sigue descargándose hasta entonces), así que la sugerencia se
+queda corta; cuanto más cerca del inicio se consulte (p. ej. 23:00 o,
+mejor, 00:00–00:10), más exacta es. El tiempo usado es la duración completa
+de la franja.
 
 **4.4 Fórmulas.**
 
@@ -181,7 +182,7 @@ se estimaría ~70 % al final de la franja, consistente con lo observado.
 
 **4.5 Avisos (`warnings`).** Corriente requerida > `BATTERY_MAX_CHARGE_A`
 (status `infeasible`); potencia de carga estimada (`sugerida × V_batería`) >
-`TOU_POWER` de la franja; SoC de partida asumido distinto del actual.
+`TOU_POWER` de la franja; franja no iniciada (el SoC al inicio será menor que el actual).
 
 **4.6 Qué NO modela.** Aportación solar (de noche es 0; si la franja es
 diurna la sugerencia es conservadora), consumo de la casa (la corriente de

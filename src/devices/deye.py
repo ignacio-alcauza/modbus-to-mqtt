@@ -326,17 +326,14 @@ def compute_grid_charge_suggestion(state: dict, now_hhmm: tuple) -> dict:
         result["status"] = "inputs_unavailable"
         return result
 
-    # Franja aún no iniciada: el SoC bajará hasta el inicio. Se calcula con el
-    # peor caso razonable: el menor entre el SoC actual y el SoC mínimo
-    # configurado en las franjas sin carga de red (el suelo al que baja de noche).
+    # Siempre se calcula con el SoC del momento de la consulta. Si la franja
+    # aún no ha empezado, el SoC real al inicio será menor: se avisa, pero no
+    # se estima (cuanto más cerca del inicio se consulte, más exacta es).
     soc_for_calc = soc
     if not slot["active"]:
-        floors = [v for i, v in enumerate(soc_targets) if not gc_flags[i]]
-        if floors and min(floors) < soc:
-            soc_for_calc = min(floors)
-            result["warnings"].append(
-                f"slot has not started; calculated assuming start SoC {soc_for_calc}% "
-                f"(lowest TOU_SOC of non-grid-charge slots) instead of current {soc}%")
+        result["warnings"].append(
+            f"slot has not started (in {slot['starts_in_min']} min); calculated with current SoC {soc}%, "
+            "which will likely be lower at slot start — query closer to the start for a tighter value")
     result["inputs"]["assumed_start_soc_pct"] = soc_for_calc
 
     missing_pct = target - soc_for_calc
