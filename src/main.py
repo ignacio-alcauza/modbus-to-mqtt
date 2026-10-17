@@ -5,6 +5,7 @@ import sys
 import json
 import yaml
 import logging
+import signal
 import threading
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -98,6 +99,7 @@ def main():
     )
 
     devices = []
+    api_server = None
 
     # Init devices based on config
 
@@ -159,7 +161,7 @@ def main():
 
         tou_api_conf = deye_conf.get("tou_write_api", {})
         if tou_api_conf.get("active", False):
-            start_command_api(
+            api_server = start_command_api(
                 deye_client=deye,
                 deye_lock=deye_lock,
                 api_key=os.getenv("DEYE_TOU_API_KEY"),
@@ -196,10 +198,21 @@ def main():
                 except Exception as e:
                     logger.error(f"Failed to publish discovery for {dev['name']}: {e}")
 
+    # Docker envía SIGTERM al parar; como PID 1 Python lo ignoraría por defecto.
+    # Solo activamos un flag: el ciclo en curso (y su lock Modbus) termina limpio.
+    stop = threading.Event()
+
+    def _request_stop(signum, frame):
+        logger.info(f"Signal {signal.Signals(signum).name} received, shutting down...")
+        stop.set()
+
+    signal.signal(signal.SIGTERM, _request_stop)
+    signal.signal(signal.SIGINT, _request_stop)
+
     logger.info("Starting main loop...")
     
     try:
-        while True:
+        while not stop.is_set():
             # Update heartbeat file for Docker healthcheck
             try:
                 # touching file is enough to update mtime
@@ -251,12 +264,16 @@ def main():
 
                     dev["last_run"] = time.time()
                     
-            time.sleep(1)
-            
-    except KeyboardInterrupt:
-        logger.info("Shutting down...")
+            stop.wait(1)
+
     finally:
+        logger.info("Shutting down...")
+        if api_server:
+            api_server.shutdown()
+            api_server.server_close()
         if publisher:
+            for dev in devices:
+                publisher.publish_raw(dev["availability_topic"], "offline", retain=True, wait=True)
             publisher.disconnect()
 
 if __name__ == "__main__":

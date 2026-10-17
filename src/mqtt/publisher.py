@@ -38,12 +38,14 @@ class MQTTPublisher:
         self.client.loop_stop()
         self.client.disconnect()
 
-    def publish_raw(self, topic: str, payload: str, retain: bool = False):
-        """Publish a raw string payload."""
+    def publish_raw(self, topic: str, payload: str, retain: bool = False, wait: bool = False):
+        """Publish a raw string payload. With wait=True, block until the broker acks (QoS 1)."""
         try:
             result = self.client.publish(topic, payload, qos=1, retain=retain)
             if result.rc != mqtt.MQTT_ERR_SUCCESS:
                 logger.error(f"Failed to publish to {topic}, return code: {result.rc}")
+            elif wait:
+                result.wait_for_publish(timeout=5)
         except Exception as e:
             logger.error(f"Error publishing to {topic}: {e}")
 
